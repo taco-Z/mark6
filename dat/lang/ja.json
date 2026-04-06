@@ -1,0 +1,18 @@
+{
+    "login_title": "ログイン",
+    "login_failed": "ログイン失敗",
+    "logout_done": "ログアウトしました",
+    "user_id": "ユーザーID",
+    "password": "パスワード",
+    "login_button": "ログイン",
+    "dashboard": "ダッシュボード",
+    "article_list": "記事一覧",
+    "article_edit": "編集",
+    "article_delete": "削除",
+    "confirm_delete": "削除しますか？",
+    "article_title": "タイトル",
+    "article_body": "本文",
+    "article_category": "カテゴリ",
+    "article_status": "状態",
+    "save": "保存"
+}

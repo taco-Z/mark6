@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temp
+tmp/
+*.tmp
+
+# Secrets
+.env
+.env.*
+secret.json
+config.local.json
+
+# MARK6 runtime
+data/*.bak
+data/*.tmp
+public/uploads/
+
+dat/session.jsonl
+dat/user.jsonl

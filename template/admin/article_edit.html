@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>記事編集 - {{site_title}}</title>
+</head>
+
+<body>
+    <h1>記事編集</h1>
+
+    <p>
+        <a href="operation.cgi">ダッシュボード</a> |
+        <a href="operation.cgi?action=article_list">記事一覧</a> |
+        <a href="operation.cgi?action=logout">ログアウト</a>
+    </p>
+
+    {{message}}
+
+    <form method="post" action="operation.cgi">
+        <input type="hidden" name="action" value="article_save">
+        <input type="hidden" name="id" value="{{id}}">
+
+        <p>
+            タイトル<br>
+            <input type="text" name="title" value="{{title}}" size="80">
+        </p>
+
+        <p>
+            カテゴリ<br>
+            <input type="text" name="category" value="{{category}}" size="40">
+        </p>
+
+        <p>
+            ステータス<br>
+            <select name="status">
+                <option value="1" {{status_1}}>公開</option>
+                <option value="0" {{status_0}}>下書き</option>
+            </select>
+        </p>
+
+        <p>
+            本文<br>
+            <textarea name="body" rows="20" cols="100">{{body}}</textarea>
+        </p>
+
+        <p>
+            <button type="submit">保存</button>
+        </p>
+    </form>
+
+    <hr>
+
+    <h2>AI補助（ダミー配置）</h2>
+    <p>
+        <button type="button">AIタイトル</button>
+        <button type="button">AI要約</button>
+        <button type="button">AIタグ</button>
+        <button type="button">AI下書き</button>
+    </p>
+
+</body>
+
+</html>

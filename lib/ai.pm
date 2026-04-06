@@ -1,0 +1,5 @@
+suggest_title()
+suggest_summary()
+rewrite_article()
+generate_tags()
+draft_from_memo()

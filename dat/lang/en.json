@@ -1,0 +1,18 @@
+{
+    "login_title": "Login",
+    "login_failed": "Login failed",
+    "logout_done": "Logged out",
+    "user_id": "User ID",
+    "password": "Password",
+    "login_button": "Login",
+    "dashboard": "Dashboard",
+    "article_list": "Articles",
+    "article_edit": "Edit",
+    "article_delete": "Delete",
+    "confirm_delete": "Are you sure?",
+    "article_title": "Title",
+    "article_body": "Body",
+    "article_category": "Category",
+    "article_status": "Status",
+    "save": "Save"
+}
