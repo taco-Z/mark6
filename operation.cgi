@@ -19,3 +19,5 @@ print web::header_html(
     cookie => ($res->{cookie} || '')
 );
 print $res->{body};
+
+#TEST

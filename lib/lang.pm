@@ -2,104 +2,80 @@ package lang;
 use strict;
 use warnings;
 use utf8;
+use JSON::PP;
+use Exporter 'import';
 
-use JSON::PP ();
-use Encode qw(decode FB_CROAK);
+our @EXPORT_OK = qw(load_dict get_lang t);
+
+my %DICT_CACHE;
+
+sub load_dict {
+    my ($file) = @_;
+    return $DICT_CACHE{$file} if exists $DICT_CACHE{$file};
+
+    open my $fh, '<:encoding(UTF-8)', $file
+        or die "lang.pm: cannot open $file: $!";
+    local $/;
+    my $json = <$fh>;
+    close $fh;
+
+    my $dict = decode_json($json);
+    $DICT_CACHE{$file} = $dict;
+    return $dict;
+}
+
+sub _parse_cookies {
+    my ($cookie_header) = @_;
+    my %cookies;
+
+    return \%cookies unless defined $cookie_header && length $cookie_header;
+
+    for my $pair (split /\s*;\s*/, $cookie_header) {
+        my ($k, $v) = split /=/, $pair, 2;
+        next unless defined $k && length $k;
+        $v = '' unless defined $v;
+        $cookies{$k} = $v;
+    }
+
+    return \%cookies;
+}
+
+sub _is_valid_lang {
+    my ($lang, $dict) = @_;
+    return 0 unless defined $lang && length $lang;
+    return exists $dict->{$lang};
+}
 
 sub get_lang {
     my ($ctx) = @_;
-    my $lang = $ctx->{params}->{lang}
-        || $ctx->{cookies}->{lang}
-        || 'en';
 
-    return ($lang eq 'ja' || $lang eq 'en') ? $lang : 'en';
-}
+    my $dict   = $ctx->{lang_dict} || {};
+    my $params = $ctx->{params}    || {};
+    my $env    = $ctx->{env}       || \%ENV;
 
-sub load_lang {
-    my ($ctx, $lang) = @_;
-    $lang ||= 'en';
-
-    my $file = $ctx->{path}->{dat_dir} . "/lang/$lang.json";
-    my $data = {};
-
-    unless (-f $file) {
-        warn "[lang.pm] file not found: $file";
-        return $data;
+    # 1. URL parameter
+    if (_is_valid_lang($params->{lang}, $dict)) {
+        return $params->{lang};
     }
 
-    open my $fh, '<:raw', $file or do {
-        warn "[lang.pm] open error: $file : $!";
-        return $data;
-    };
-
-    local $/;
-    my $raw = <$fh>;
-    close $fh;
-
-    unless (defined $raw) {
-        warn "[lang.pm] read error: $file";
-        return $data;
+    # 2. Cookie
+    my $cookies = _parse_cookies($env->{HTTP_COOKIE});
+    if (_is_valid_lang($cookies->{mark6_lang}, $dict)) {
+        return $cookies->{mark6_lang};
     }
 
-    $raw =~ s/^\xEF\xBB\xBF//;
-
-    my $text = eval { decode('UTF-8', $raw, FB_CROAK) };
-    if ($@) {
-        warn "[lang.pm] UTF-8 decode error: $file : $@";
-        return $data;
-    }
-
-    my $json = eval { JSON::PP->new->utf8(0)->decode($text || '{}') };
-    if ($@ || ref($json) ne 'HASH') {
-        warn "[lang.pm] JSON decode error: $file : $@";
-        return $data;
-    }
-
-    return $json;
-
-    warn "[lang] requested lang=$lang";
-
-    my $file = $ctx->{path}->{dat_dir} . "/lang/$lang.json";
-    warn "[lang] file=$file exists=" . (-f $file ? 1 : 0);
-
-    # いったんキャッシュ無効
-    # return $CACHE{$lang} if exists $CACHE{$lang};
-
-    open my $fh, '<:raw', $file or do {
-        warn "[lang] open failed: $file : $!";
-        return {};
-    };
-
-    local $/;
-    my $raw = <$fh>;
-    close $fh;
-
-    warn "[lang] bytes=" . length($raw // '');
-
-    $raw =~ s/^\xEF\xBB\xBF//;
-
-    my $text = eval { decode('UTF-8', $raw, FB_CROAK) };
-    if ($@) {
-        warn "[lang] utf8 decode failed: $@";
-        return {};
-    }
-
-    my $json = eval { JSON::PP->new->utf8(0)->decode($text || '{}') };
-    if ($@ || ref($json) ne 'HASH') {
-        warn "[lang] json decode failed: $@";
-        return {};
-    }
-
-    warn "[lang] loaded keys=" . join(',', sort keys %$json);
-    return $json;
-
+    # 3. Default
+    return 'en';
 }
 
 sub t {
     my ($ctx, $key) = @_;
-    my $lang = get_lang($ctx);
-    my $dict = load_lang($ctx, $lang);
-    return $dict->{$key} // $key;
+    my $dict = $ctx->{lang_dict} || {};
+    my $lang = $ctx->{lang} || 'en';
+
+    return $dict->{$lang}{$key}
+        // $dict->{en}{$key}
+        // $key;
 }
 
 1;
