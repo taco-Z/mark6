@@ -3,64 +3,42 @@ use strict;
 use warnings;
 use utf8;
 
-use JSON::PP ();
-use File::Spec;
+use Cwd qw(abs_path);
 use FindBin;
-use web;
+use lang ();
+use web ();
 
 sub init {
-    my ($mode) = @_;
-    $mode ||= 'public';
+    my %query_params = %{ web::parse_params($ENV{QUERY_STRING} // '') };
+    my %body_params  = ();
+    my %params       = ();
+    my %cookies      = %{ web::parse_cookies($ENV{HTTP_COOKIE} // '') };
+    my $base_dir     = abs_path($FindBin::Bin) || $FindBin::Bin;
 
-    my $root   = File::Spec->rel2abs($FindBin::Bin);
-    my $dat    = File::Spec->catdir($root, 'dat');
-    my $tpl    = File::Spec->catdir($root, 'template');
-    my $lib    = File::Spec->catdir($root, 'lib');
-    my $tmp    = File::Spec->catdir($root, 'tmp');
-    my $static = File::Spec->catdir($root, 'static');
-
-    my $config_file = File::Spec->catfile($dat, 'config.json');
-
-    my $config = {
-        site_title        => 'MARK6',
-        site_url          => '',
-        article_page_size => 20,
-        session_hours     => 12,
-        cookie_name       => 'mark6_sid',
-    };
-
-    if (-f $config_file) {
-        open my $fh, '<:utf8', $config_file or die "Cannot open $config_file: $!";
-        local $/;
-        my $json = <$fh>;
-        close $fh;
-
-        if (defined $json && $json =~ /\S/) {
-            my $loaded = eval { JSON::PP::decode_json($json) };
-            die "Invalid JSON in $config_file: $@" if $@;
-            $config = { %{$config}, %{$loaded || {}} };
-        }
+    if (uc($ENV{REQUEST_METHOD} || '') eq 'POST') {
+        %body_params = %{ web::read_post_params() };
     }
 
-    return {
-        mode    => $mode,
-        now     => time,
-        params  => web::parse_params(),
-        cookies => web::parse_cookies(),
-        config  => $config,
-        path    => {
-            root       => $root,
-            dat_dir    => $dat,
-            tpl_dir    => $tpl,
-            lib_dir    => $lib,
-            tmp_dir    => $tmp,
-            static_dir => $static,
-            article_db => File::Spec->catfile($dat, 'article.jsonl'),
-            user_db    => File::Spec->catfile($dat, 'user.jsonl'),
-            session_db => File::Spec->catfile($dat, 'session.jsonl'),
-            config     => $config_file,
-        },
+    %params = (%query_params, %body_params);
+
+    my $ctx = {
+        env      => { %ENV },
+        params   => \%params,
+        base_dir => $base_dir,
+        cookies  => \%cookies,
     };
+
+    my $lang = lang::detect_lang(
+        query_params  => \%query_params,
+        cookies       => \%cookies,
+        default_lang  => 'en',
+    );
+
+    $ctx->{lang} = $lang;
+    $ctx->{dict} = lang::load_dict($base_dir, $lang);
+
+    return $ctx;
 }
 
 1;
+

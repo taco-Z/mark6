@@ -2,362 +2,316 @@ package router;
 use strict;
 use warnings;
 use utf8;
-use JSON::PP;
-use lang qw(load_dict get_lang t);
-use render ();
 
-sub dispatch_admin {
+use JSON::PP ();
+use lang ();
+use render ();
+use web ();
+
+sub dispatch {
     my ($ctx) = @_;
 
-    $ctx ||= {};
-    $ctx->{env}    ||= \%ENV;
-    $ctx->{params} ||= _parse_query_string($ctx->{env}->{QUERY_STRING} // '');
+    my $action = $ctx->{params}->{action} || '';
+    my $cookie = '';
+    my $method = uc($ctx->{env}->{REQUEST_METHOD} || 'GET');
 
-    # lang dict
-    $ctx->{lang_file} ||= 'dat/lang/admin.json';
-    $ctx->{lang_dict} ||= lang::load_dict($ctx->{lang_file});
-    $ctx->{lang}      ||= lang::get_lang($ctx);
-
-    my $cookie_line = '';
-    if (defined $ctx->{params}->{lang} && _is_allowed_lang($ctx->{params}->{lang}, $ctx->{lang_dict})) {
-        $cookie_line = _build_lang_cookie_header($ctx->{params}->{lang});
-        $ctx->{lang} = $ctx->{params}->{lang};
-    }
-
-    my $mode = $ctx->{params}->{mode} || '';
-
-    if ($mode eq 'login' && _is_post($ctx)) {
-        return _do_login($ctx, $cookie_line);
-    }
-    elsif ($mode eq 'logout') {
-        return _logout($ctx, $cookie_line);
-    }
-    elsif ($mode eq 'edit') {
-        return _show_article_edit($ctx, $cookie_line);
-    }
-    elsif ($mode eq 'save' && _is_post($ctx)) {
-        return _save_article($ctx, $cookie_line);
-    }
-    elsif ($mode eq 'delete') {
-        return _delete_article($ctx, $cookie_line);
-    }
-    elsif (_is_logged_in($ctx)) {
-        return _show_admin_home($ctx, $cookie_line);
-    }
-    else {
-        return _show_login($ctx, $cookie_line);
-    }
-}
-
-sub _show_login {
-    my ($ctx, $cookie_line) = @_;
-
-    my $vars = {
-        page_title      => lang::t($ctx, 'login_title'),
-        login_title     => lang::t($ctx, 'login_title'),
-        login_desc      => lang::t($ctx, 'login_desc'),
-        login_button    => lang::t($ctx, 'login_button'),
-        username_label  => lang::t($ctx, 'username_label'),
-        password_label  => lang::t($ctx, 'password_label'),
-        lang_ja_url     => _build_lang_url($ctx, 'ja'),
-        lang_en_url     => _build_lang_url($ctx, 'en'),
-        message         => '',
-    };
-
-    my $html = render::render_template('template/admin/login.html', $vars);
-    return _print_html_response(
-        body        => $html,
-        cookie_line => $cookie_line,
-    );
-}
-
-sub _show_admin_home {
-    my ($ctx, $cookie_line) = @_;
-
-    my $articles = _load_jsonl('dat/article.jsonl');
-
-    my $article_rows = '';
-    for my $row (@$articles) {
-        my $id    = _html_escape($row->{id}    // '');
-        my $title = _html_escape($row->{title} // '');
-        my $stat  = _html_escape($row->{status} // '');
-
-        $article_rows .= qq{<tr>}
-                       . qq{<td>$id</td>}
-                       . qq{<td>$title</td>}
-                       . qq{<td>$stat</td>}
-                       . qq{<td><a href="?mode=edit&id=$id&lang=$ctx->{lang}">Edit</a></td>}
-                       . qq{</tr>\n};
-    }
-
-    if ($article_rows eq '') {
-        $article_rows = qq{<tr><td colspan="4">} . _html_escape(lang::t($ctx, 'no_articles')) . qq{</td></tr>};
-    }
-
-    my $vars = {
-        page_title        => lang::t($ctx, 'admin_title'),
-        admin_title       => lang::t($ctx, 'admin_title'),
-        article_list      => lang::t($ctx, 'article_list'),
-        new_article       => lang::t($ctx, 'new_article'),
-        logout_label      => lang::t($ctx, 'logout_label'),
-        article_rows      => $article_rows,
-        lang_ja_url       => _build_lang_url($ctx, 'ja'),
-        lang_en_url       => _build_lang_url($ctx, 'en'),
-        new_article_url   => '?mode=edit&lang=' . $ctx->{lang},
-        logout_url        => '?mode=logout&lang=' . $ctx->{lang},
-    };
-
-    my $html = render::render_template('template/admin/index.html', $vars);
-    return _print_html_response(
-        body        => $html,
-        cookie_line => $cookie_line,
-    );
-}
-
-sub _show_article_edit {
-    my ($ctx, $cookie_line) = @_;
-
-    my $id = $ctx->{params}->{id} || '';
-    my $article = {};
-
-    if (length $id) {
-        my $rows = _load_jsonl('dat/article.jsonl');
-        for my $row (@$rows) {
-            if (($row->{id} // '') eq $id) {
-                $article = $row;
-                last;
-            }
-        }
-    }
-
-    my $vars = {
-        page_title      => lang::t($ctx, 'edit_article'),
-        edit_title      => lang::t($ctx, 'edit_article'),
-        title_label     => lang::t($ctx, 'title_label'),
-        body_label      => lang::t($ctx, 'body_label'),
-        status_label    => lang::t($ctx, 'status_label'),
-        save_button     => lang::t($ctx, 'save_button'),
-        back_label      => lang::t($ctx, 'back_label'),
-        id              => _html_escape($article->{id} // ''),
-        title           => _html_escape($article->{title} // ''),
-        body            => _html_escape($article->{body} // ''),
-        status          => _html_escape($article->{status} // 'draft'),
-        back_url        => '?lang=' . $ctx->{lang},
-        form_action     => '?mode=save&lang=' . $ctx->{lang},
-    };
-
-    my $html = render::render_template('template/admin/edit.html', $vars);
-    return _print_html_response(
-        body        => $html,
-        cookie_line => $cookie_line,
-    );
-}
-
-sub _save_article {
-    my ($ctx, $cookie_line) = @_;
-
-    my $body_params = _parse_post_body($ctx);
-    my $id     = $body_params->{id}     // '';
-    my $title  = $body_params->{title}  // '';
-    my $body   = $body_params->{body}   // '';
-    my $status = $body_params->{status} // 'draft';
-
-    my $rows = _load_jsonl('dat/article.jsonl');
-
-    if (!length $id) {
-        $id = _next_article_id($rows);
-        push @$rows, {
-            id     => $id,
-            title  => $title,
-            body   => $body,
-            status => $status,
-        };
-    } else {
-        my $found = 0;
-        for my $row (@$rows) {
-            next unless ($row->{id} // '') eq $id;
-            $row->{title}  = $title;
-            $row->{body}   = $body;
-            $row->{status} = $status;
-            $found = 1;
-            last;
-        }
-        if (!$found) {
-            push @$rows, {
-                id     => $id,
-                title  => $title,
-                body   => $body,
-                status => $status,
-            };
-        }
-    }
-
-    _save_jsonl('dat/article.jsonl', $rows);
-
-    return _redirect('?lang=' . $ctx->{lang}, $cookie_line);
-}
-
-sub _delete_article {
-    my ($ctx, $cookie_line) = @_;
-
-    my $id = $ctx->{params}->{id} || '';
-    my $rows = _load_jsonl('dat/article.jsonl');
-
-    my @kept = grep { ($_->{id} // '') ne $id } @$rows;
-    _save_jsonl('dat/article.jsonl', \@kept);
-
-    return _redirect('?lang=' . $ctx->{lang}, $cookie_line);
-}
-
-sub _do_login {
-    my ($ctx, $cookie_line) = @_;
-
-    my $body_params = _parse_post_body($ctx);
-    my $username = $body_params->{username} // '';
-    my $password = $body_params->{password} // '';
-
-    # 仮実装: admin / mark6
-    if ($username eq 'admin' && $password eq 'mark6') {
-        my $session_cookie = _build_session_cookie_header('dummy_session_ok');
-
-        my $html = qq{
-<!DOCTYPE html>
-<html><head>
-<meta http-equiv="refresh" content="0;url=?lang=$ctx->{lang}">
-</head><body>Redirecting...</body></html>
-};
-
-        return _print_html_response(
-            body         => $html,
-            cookie_lines => [grep { defined $_ && length $_ } ($cookie_line, $session_cookie)],
+    if (defined $ctx->{params}->{lang} && $ctx->{params}->{lang} =~ /^(?:ja|en)$/) {
+        $cookie = web::make_cookie(
+            name    => 'mark6_lang',
+            value   => $ctx->{params}->{lang},
+            path    => '/',
+            max_age => 31536000,
         );
     }
 
-    my $vars = {
-        page_title      => lang::t($ctx, 'login_title'),
-        login_title     => lang::t($ctx, 'login_title'),
-        login_desc      => lang::t($ctx, 'login_desc'),
-        login_button    => lang::t($ctx, 'login_button'),
-        username_label  => lang::t($ctx, 'username_label'),
-        password_label  => lang::t($ctx, 'password_label'),
-        lang_ja_url     => _build_lang_url($ctx, 'ja'),
-        lang_en_url     => _build_lang_url($ctx, 'en'),
-        message         => _html_escape(lang::t($ctx, 'login_failed')),
-    };
+    if ($action eq 'do_login' && $method eq 'POST') {
+        return _do_login($ctx, $cookie);
+    }
 
-    my $html = render::render_template('template/admin/login.html', $vars);
-    return _print_html_response(
-        body        => $html,
-        cookie_line => $cookie_line,
-    );
+    if ($action eq 'logout') {
+        return {
+            body     => _redirect_body(),
+            cookie   => web::make_cookie(
+                name    => 'mark6_admin',
+                value   => '',
+                path    => '/',
+                max_age => 0,
+            ),
+            location => _url($ctx, action => 'login'),
+        };
+    }
+
+    if (!_is_logged_in($ctx)) {
+        return _login_page($ctx, $cookie);
+    }
+
+    if ($action eq 'article_edit') {
+        return _article_edit_page($ctx, $cookie);
+    }
+
+    if ($action eq 'article_save' && $method eq 'POST') {
+        return _article_save($ctx, $cookie);
+    }
+
+    return _article_list_page($ctx, $cookie);
 }
 
-sub _logout {
-    my ($ctx, $cookie_line) = @_;
+sub _login_page {
+    my ($ctx, $cookie, $message) = @_;
 
-    my $logout_cookie = 'Set-Cookie: mark6_session=; Path=/; Max-Age=0; SameSite=Lax';
-    return _redirect('?lang=' . $ctx->{lang}, [grep { defined $_ && length $_ } ($cookie_line, $logout_cookie)]);
+    my $template = <<'HTML';
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<title>{{site_title}} - {{login_title}}</title>
+</head>
+<body>
+<h1>{{login_title}}</h1>
+<p><a href="{{ja_url}}">JA</a> | <a href="{{en_url}}">EN</a></p>
+<div>{{message}}</div>
+<form method="post" action="{{login_action}}">
+<p>{{user_id}}<br><input type="text" name="id"></p>
+<p>{{password}}<br><input type="password" name="pwd"></p>
+<p><button type="submit">{{login_button}}</button></p>
+</form>
+</body>
+</html>
+HTML
+
+    return {
+        body => render::render_template($template, {
+            lang         => $ctx->{lang},
+            site_title   => _text($ctx, 'site_title'),
+            login_title  => _text($ctx, 'login_title'),
+            login_button => _text($ctx, 'login_button'),
+            user_id      => _text($ctx, 'user_id'),
+            password     => _text($ctx, 'password'),
+            ja_url       => _url($ctx, action => 'login', lang => 'ja'),
+            en_url       => _url($ctx, action => 'login', lang => 'en'),
+            login_action => _url($ctx, action => 'do_login'),
+            message      => defined $message && length $message ? '<p>' . _escape_html($message) . '</p>' : '',
+        }),
+        cookie   => $cookie,
+        location => '',
+    };
+}
+
+sub _do_login {
+    my ($ctx, $cookie) = @_;
+
+    my $id  = $ctx->{params}->{id}  // '';
+    my $pwd = $ctx->{params}->{pwd} // '';
+
+    if ($id eq 'admin' && $pwd eq 'mark6') {
+        return {
+            body     => _redirect_body(),
+            cookie   => web::make_cookie(
+                name    => 'mark6_admin',
+                value   => '1',
+                path    => '/',
+                max_age => 86400,
+            ),
+            location => _url($ctx, action => 'article_list'),
+        };
+    }
+
+    return _login_page($ctx, $cookie, _text($ctx, 'login_failed'));
+}
+
+sub _article_list_page {
+    my ($ctx, $cookie) = @_;
+
+    my $rows = _load_articles($ctx);
+    my $list = '';
+
+    for my $row (@{$rows}) {
+        my $id       = _escape_html($row->{id} // '');
+        my $title    = _escape_html($row->{title} // '');
+        my $category = _escape_html($row->{category} // '');
+        my $status   = ($row->{status} // '') eq '1' ? _text($ctx, 'public_status') : _text($ctx, 'draft_status');
+
+        $list .= qq{<tr><td>$id</td><td>$title</td><td>$category</td><td>} . _escape_html($status) . qq{</td><td><a href="}
+              . _url($ctx, action => 'article_edit', id => $row->{id})
+              . qq{">} . _escape_html(_text($ctx, 'article_edit')) . qq{</a></td></tr>\n};
+    }
+
+    if ($list eq '') {
+        $list = qq{<tr><td colspan="5">} . _escape_html(_text($ctx, 'empty_articles')) . qq{</td></tr>};
+    }
+
+    my $template = <<'HTML';
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<title>{{site_title}} - {{article_list}}</title>
+</head>
+<body>
+<h1>{{article_list}}</h1>
+<p>
+<a href="{{new_url}}">{{article_new}}</a> |
+<a href="{{logout_url}}">{{logout_label}}</a> |
+<a href="{{ja_url}}">JA</a> |
+<a href="{{en_url}}">EN</a>
+</p>
+<table border="1" cellpadding="6">
+<tr>
+<th>ID</th>
+<th>{{title_label}}</th>
+<th>{{category_label}}</th>
+<th>{{status_label}}</th>
+<th>{{article_edit}}</th>
+</tr>
+{{article_rows}}
+</table>
+</body>
+</html>
+HTML
+
+    return {
+        body => render::render_template($template, {
+            lang           => $ctx->{lang},
+            site_title     => _text($ctx, 'site_title'),
+            article_list   => _text($ctx, 'article_list'),
+            article_new    => _text($ctx, 'article_new'),
+            logout_label   => _text($ctx, 'logout_label'),
+            title_label    => _text($ctx, 'title_label'),
+            category_label => _text($ctx, 'category_label'),
+            status_label   => _text($ctx, 'status_label'),
+            article_edit   => _text($ctx, 'article_edit'),
+            article_rows   => $list,
+            new_url        => _url($ctx, action => 'article_edit'),
+            logout_url     => _url($ctx, action => 'logout'),
+            ja_url         => _url($ctx, action => 'article_list', lang => 'ja'),
+            en_url         => _url($ctx, action => 'article_list', lang => 'en'),
+        }),
+        cookie   => $cookie,
+        location => '',
+    };
+}
+
+sub _article_edit_page {
+    my ($ctx, $cookie) = @_;
+
+    my $article = _find_article($ctx, $ctx->{params}->{id});
+    my $status  = defined $article->{status} ? $article->{status} : '0';
+
+    my $template = <<'HTML';
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<title>{{site_title}} - {{article_edit}}</title>
+</head>
+<body>
+<h1>{{article_edit}}</h1>
+<p>
+<a href="{{list_url}}">{{article_list}}</a> |
+<a href="{{logout_url}}">{{logout_label}}</a>
+</p>
+<form method="post" action="{{save_action}}">
+<input type="hidden" name="id" value="{{id}}">
+<p>{{title_label}}<br><input type="text" name="title" value="{{title}}" size="80"></p>
+<p>{{category_label}}<br><input type="text" name="category" value="{{category}}" size="40"></p>
+<p>{{status_label}}<br>
+<select name="status">
+<option value="1" {{status_1}}>{{public_status}}</option>
+<option value="0" {{status_0}}>{{draft_status}}</option>
+</select>
+</p>
+<p>{{body_label}}<br><textarea name="body" rows="20" cols="100">{{body}}</textarea></p>
+<p><button type="submit">{{save_button}}</button></p>
+</form>
+</body>
+</html>
+HTML
+
+    return {
+        body => render::render_template($template, {
+            lang           => $ctx->{lang},
+            site_title     => _text($ctx, 'site_title'),
+            article_edit   => _text($ctx, 'article_edit'),
+            article_list   => _text($ctx, 'article_list'),
+            logout_label   => _text($ctx, 'logout_label'),
+            title_label    => _text($ctx, 'title_label'),
+            category_label => _text($ctx, 'category_label'),
+            status_label   => _text($ctx, 'status_label'),
+            body_label     => _text($ctx, 'body_label'),
+            save_button    => _text($ctx, 'save_button'),
+            public_status  => _text($ctx, 'public_status'),
+            draft_status   => _text($ctx, 'draft_status'),
+            id             => _escape_html($article->{id} // ''),
+            title          => _escape_html($article->{title} // ''),
+            category       => _escape_html($article->{category} // ''),
+            body           => _escape_html($article->{body} // ''),
+            status_1       => $status eq '1' ? 'selected' : '',
+            status_0       => $status eq '1' ? '' : 'selected',
+            list_url       => _url($ctx, action => 'article_list'),
+            logout_url     => _url($ctx, action => 'logout'),
+            save_action    => _url($ctx, action => 'article_save'),
+        }),
+        cookie   => $cookie,
+        location => '',
+    };
+}
+
+sub _article_save {
+    my ($ctx, $cookie) = @_;
+
+    my $rows = _load_articles($ctx);
+
+    my $id = defined $ctx->{params}->{id} && length $ctx->{params}->{id}
+        ? $ctx->{params}->{id}
+        : _next_article_id($rows);
+
+    my $record = {
+        id       => "$id",
+        title    => $ctx->{params}->{title} // '',
+        category => $ctx->{params}->{category} // '',
+        body     => $ctx->{params}->{body} // '',
+        status   => ($ctx->{params}->{status} // '0') eq '1' ? '1' : '0',
+    };
+
+    my $updated = 0;
+    for my $row (@{$rows}) {
+        next unless ($row->{id} // '') eq $record->{id};
+        %{$row} = %{$record};
+        $updated = 1;
+        last;
+    }
+
+    push @{$rows}, $record unless $updated;
+
+    _save_articles($ctx, $rows);
+
+    return {
+        body     => _redirect_body(),
+        cookie   => $cookie,
+        location => _url($ctx, action => 'article_list'),
+    };
 }
 
 sub _is_logged_in {
     my ($ctx) = @_;
-    my $env = $ctx->{env} || \%ENV;
-    my $cookies = _parse_cookies($env->{HTTP_COOKIE});
-    return (($cookies->{mark6_session} // '') eq 'dummy_session_ok') ? 1 : 0;
+    return ($ctx->{cookies}->{mark6_admin} // '') eq '1' ? 1 : 0;
 }
 
-sub _build_lang_cookie_header {
-    my ($lang) = @_;
-    return '' unless defined $lang && $lang =~ /^(ja|en)$/;
-    return "Set-Cookie: mark6_lang=$lang; Path=/; Max-Age=31536000; SameSite=Lax";
-}
-
-sub _build_session_cookie_header {
-    my ($value) = @_;
-    return "Set-Cookie: mark6_session=$value; Path=/; Max-Age=86400; SameSite=Lax";
-}
-
-sub _build_lang_url {
-    my ($ctx, $lang) = @_;
-    my %params = %{ $ctx->{params} || {} };
-    $params{lang} = $lang;
-
-    my @pairs;
-    for my $k (sort keys %params) {
-        my $v = defined $params{$k} ? $params{$k} : '';
-        push @pairs, _url_encode($k) . '=' . _url_encode($v);
-    }
-
-    return '?' . join('&', @pairs);
-}
-
-sub _is_allowed_lang {
-    my ($lang, $dict) = @_;
-    return 0 unless defined $lang && length $lang;
-    return exists $dict->{$lang};
-}
-
-sub _parse_query_string {
-    my ($qs) = @_;
-    my %params;
-
-    return \%params unless defined $qs && length $qs;
-
-    for my $pair (split /&/, $qs) {
-        next unless length $pair;
-        my ($k, $v) = split /=/, $pair, 2;
-        $k = _url_decode($k // '');
-        $v = _url_decode($v // '');
-        $params{$k} = $v;
-    }
-
-    return \%params;
-}
-
-sub _parse_post_body {
+sub _load_articles {
     my ($ctx) = @_;
-
-    my $env = $ctx->{env} || \%ENV;
-    my $method = $env->{REQUEST_METHOD} || '';
-    return {} unless uc($method) eq 'POST';
-
-    my $len = $env->{CONTENT_LENGTH} || 0;
-    my $body = '';
-    read(STDIN, $body, $len) if $len > 0;
-
-    return _parse_query_string($body);
-}
-
-sub _parse_cookies {
-    my ($cookie_header) = @_;
-    my %cookies;
-
-    return \%cookies unless defined $cookie_header && length $cookie_header;
-
-    for my $pair (split /\s*;\s*/, $cookie_header) {
-        my ($k, $v) = split /=/, $pair, 2;
-        next unless defined $k && length $k;
-        $v = '' unless defined $v;
-        $cookies{$k} = $v;
-    }
-
-    return \%cookies;
-}
-
-sub _load_jsonl {
-    my ($file) = @_;
+    my $path = $ctx->{base_dir} . '/dat/article.jsonl';
     my @rows;
 
-    return \@rows unless -e $file;
+    return \@rows unless -f $path;
 
-    open my $fh, '<:encoding(UTF-8)', $file
-        or die "router.pm: cannot open $file: $!";
+    open my $fh, '<:encoding(UTF-8)', $path
+        or die "Cannot open $path: $!";
 
     while (my $line = <$fh>) {
         chomp $line;
         next unless $line =~ /\S/;
-        my $row = eval { decode_json($line) };
-        next unless $row && ref $row eq 'HASH';
+        my $row = eval { JSON::PP::decode_json($line) };
+        next unless ref $row eq 'HASH';
         push @rows, $row;
     }
 
@@ -365,98 +319,89 @@ sub _load_jsonl {
     return \@rows;
 }
 
-sub _save_jsonl {
-    my ($file, $rows) = @_;
+sub _save_articles {
+    my ($ctx, $rows) = @_;
+    my $path = $ctx->{base_dir} . '/dat/article.jsonl';
 
-    open my $fh, '>:encoding(UTF-8)', $file
-        or die "router.pm: cannot write $file: $!";
+    open my $fh, '>:encoding(UTF-8)', $path
+        or die "Cannot write $path: $!";
 
-    for my $row (@$rows) {
-        print $fh encode_json($row) . "\n";
+    for my $row (@{$rows}) {
+        print {$fh} JSON::PP::encode_json($row) . "\n";
     }
 
     close $fh;
+}
+
+sub _find_article {
+    my ($ctx, $id) = @_;
+
+    return {} unless defined $id && length $id;
+
+    my $rows = _load_articles($ctx);
+    for my $row (@{$rows}) {
+        return $row if ($row->{id} // '') eq $id;
+    }
+
+    return {};
 }
 
 sub _next_article_id {
     my ($rows) = @_;
     my $max = 0;
 
-    for my $row (@$rows) {
-        my $id = $row->{id} || 0;
-        $max = $id if $id =~ /^\d+$/ && $id > $max;
+    for my $row (@{$rows}) {
+        my $id = $row->{id} // 0;
+        next unless $id =~ /^\d+$/;
+        $max = $id if $id > $max;
     }
 
     return $max + 1;
 }
 
-sub _redirect {
-    my ($location, $cookie_input) = @_;
+sub _text {
+    my ($ctx, $key) = @_;
+    return lang::text($ctx, $key);
+}
 
-    my @cookie_lines;
-    if (ref $cookie_input eq 'ARRAY') {
-        @cookie_lines = @$cookie_input;
-    } elsif (defined $cookie_input && length $cookie_input) {
-        @cookie_lines = ($cookie_input);
+sub _url {
+    my ($ctx, %extra) = @_;
+
+    my %params = (
+        action => ($ctx->{params}->{action} || 'article_list'),
+        lang   => $ctx->{lang},
+    );
+
+    for my $key (keys %extra) {
+        if (defined $extra{$key} && $extra{$key} ne '') {
+            $params{$key} = $extra{$key};
+        } else {
+            delete $params{$key};
+        }
     }
 
-    print "Status: 302 Found\r\n";
-    print "$_\r\n" for @cookie_lines;
-    print "Location: $location\r\n";
-    print "Content-Type: text/html; charset=UTF-8\r\n";
-    print "\r\n";
-    print qq{<!DOCTYPE html><html><body>Redirecting...</body></html>};
-    return;
-}
-
-sub _print_html_response {
-    my (%args) = @_;
-
-    my $body = $args{body} // '';
-    my @cookie_lines;
-
-    if (ref $args{cookie_lines} eq 'ARRAY') {
-        @cookie_lines = @{ $args{cookie_lines} };
-    } elsif (defined $args{cookie_line} && length $args{cookie_line}) {
-        @cookie_lines = ($args{cookie_line});
+    my @pairs;
+    for my $key (sort keys %params) {
+        next unless defined $params{$key};
+        push @pairs, web::url_encode($key) . '=' . web::url_encode($params{$key});
     }
 
-    print "Content-Type: text/html; charset=UTF-8\r\n";
-    print "$_\r\n" for @cookie_lines;
-    print "\r\n";
-    print $body;
-    return;
+    return 'operation.cgi' . (@pairs ? '?' . join('&', @pairs) : '');
 }
 
-sub _is_post {
-    my ($ctx) = @_;
-    my $env = $ctx->{env} || \%ENV;
-    return uc($env->{REQUEST_METHOD} || '') eq 'POST';
+sub _escape_html {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/&/&amp;/g;
+    $value =~ s/</&lt;/g;
+    $value =~ s/>/&gt;/g;
+    $value =~ s/"/&quot;/g;
+    $value =~ s/'/&#39;/g;
+    return $value;
 }
 
-sub _url_decode {
-    my ($s) = @_;
-    return '' unless defined $s;
-    $s =~ tr/+/ /;
-    $s =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-    return $s;
-}
-
-sub _url_encode {
-    my ($s) = @_;
-    $s = '' unless defined $s;
-    $s =~ s/([^A-Za-z0-9\-\_\.\~])/sprintf("%%%02X", ord($1))/eg;
-    return $s;
-}
-
-sub _html_escape {
-    my ($s) = @_;
-    $s = '' unless defined $s;
-    $s =~ s/&/&amp;/g;
-    $s =~ s/</&lt;/g;
-    $s =~ s/>/&gt;/g;
-    $s =~ s/"/&quot;/g;
-    return $s;
+sub _redirect_body {
+    return '<!doctype html><html><body>Redirecting...</body></html>';
 }
 
 1;

@@ -4,83 +4,98 @@ use warnings;
 use utf8;
 
 sub parse_params {
+    my ($source) = @_;
     my %params;
-    my $method = $ENV{REQUEST_METHOD} || 'GET';
-    my $query  = '';
 
-    if ($method eq 'POST') {
-        my $len = $ENV{CONTENT_LENGTH} || 0;
-        read(STDIN, $query, $len) if $len > 0;
-        if (($ENV{QUERY_STRING} || '') ne '') {
-            $query .= '&' if length $query;
-            $query .= $ENV{QUERY_STRING};
-        }
-    } else {
-        $query = $ENV{QUERY_STRING} || '';
-    }
+    return \%params unless defined $source && length $source;
 
-    for my $pair (split /&/, $query) {
+    for my $pair (split /&/, $source) {
         next unless length $pair;
-        my ($k, $v) = split /=/, $pair, 2;
-        $k = _decode($k);
-        $v = _decode(defined $v ? $v : '');
-        $params{$k} = $v;
+        my ($key, $value) = split /=/, $pair, 2;
+        $key = url_decode($key // '');
+        $value = url_decode($value // '');
+        $params{$key} = $value;
     }
 
     return \%params;
 }
 
-sub parse_cookies {
-    my %cookies;
-    my $raw = $ENV{HTTP_COOKIE} || '';
+sub read_post_params {
+    my $length = $ENV{CONTENT_LENGTH} || 0;
+    my $body = '';
 
-    for my $pair (split /;\s*/, $raw) {
+    read(STDIN, $body, $length) if $length > 0;
+
+    return parse_params($body);
+}
+
+sub parse_cookies {
+    my ($raw) = @_;
+    my %cookies;
+
+    return \%cookies unless defined $raw && length $raw;
+
+    for my $pair (split /\s*;\s*/, $raw) {
         next unless length $pair;
-        my ($k, $v) = split /=/, $pair, 2;
-        next unless defined $k;
-        $cookies{$k} = defined $v ? $v : '';
+        my ($key, $value) = split /=/, $pair, 2;
+        next unless defined $key && length $key;
+        $cookies{$key} = defined $value ? $value : '';
     }
 
     return \%cookies;
 }
 
-sub header_html {
-    my (%opt) = @_;
-    my @lines = ('Content-Type: text/html; charset=UTF-8');
-    push @lines, 'Set-Cookie: ' . $opt{cookie}
-        if defined $opt{cookie} && length $opt{cookie};
-    return join("\r\n", @lines) . "\r\n\r\n";
-}
+sub build_headers {
+    my (%args) = @_;
 
-sub header_json {
-    my (%opt) = @_;
-    my @lines = ('Content-Type: application/json; charset=UTF-8');
-    push @lines, 'Set-Cookie: ' . $opt{cookie}
-        if defined $opt{cookie} && length $opt{cookie};
-    return join("\r\n", @lines) . "\r\n\r\n";
+    my @lines;
+
+    if (defined $args{location} && length $args{location}) {
+        push @lines, 'Status: 302 Found';
+        push @lines, 'Location: ' . $args{location};
+    }
+
+    push @lines, 'Content-Type: text/html; charset=UTF-8';
+
+    if (defined $args{cookie} && length $args{cookie}) {
+        push @lines, 'Set-Cookie: ' . $args{cookie};
+    }
+
+    return join("\n", @lines) . "\n\n";
 }
 
 sub make_cookie {
-    my (%opt) = @_;
-    my $name     = $opt{name}  || 'sid';
-    my $value    = defined $opt{value} ? $opt{value} : '';
-    my $path     = $opt{path} || '/';
-    my $expires  = $opt{expires};
-    my $httponly = exists $opt{httponly} ? $opt{httponly} : 1;
+    my (%args) = @_;
 
-    my @parts = ("$name=$value", "Path=$path");
-    push @parts, "Expires=$expires" if defined $expires && length $expires;
-    push @parts, 'HttpOnly' if $httponly;
+    my $name    = $args{name}  || '';
+    my $value   = defined $args{value} ? $args{value} : '';
+    my $path    = $args{path} || '/';
+    my $max_age = defined $args{max_age} ? $args{max_age} : undef;
+
+    my @parts = (
+        $name . '=' . $value,
+        'Path=' . $path,
+        'SameSite=Lax',
+    );
+
+    push @parts, 'Max-Age=' . $max_age if defined $max_age;
 
     return join('; ', @parts);
 }
 
-sub _decode {
-    my ($s) = @_;
-    $s = '' unless defined $s;
-    $s =~ tr/+/ /;
-    $s =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
-    return $s;
+sub url_decode {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ tr/+/ /;
+    $value =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/eg;
+    return $value;
+}
+
+sub url_encode {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/([^A-Za-z0-9\-\._~])/sprintf('%%%02X', ord($1))/eg;
+    return $value;
 }
 
 1;

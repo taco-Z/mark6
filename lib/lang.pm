@@ -2,80 +2,153 @@ package lang;
 use strict;
 use warnings;
 use utf8;
-use JSON::PP;
-use Exporter 'import';
 
-our @EXPORT_OK = qw(load_dict get_lang t);
+use JSON::PP ();
 
-my %DICT_CACHE;
+my %CACHE;
 
-sub load_dict {
-    my ($file) = @_;
-    return $DICT_CACHE{$file} if exists $DICT_CACHE{$file};
+sub detect_lang {
+    my (%args) = @_;
 
-    open my $fh, '<:encoding(UTF-8)', $file
-        or die "lang.pm: cannot open $file: $!";
-    local $/;
-    my $json = <$fh>;
-    close $fh;
+    my $query_params = $args{query_params} || {};
+    my $cookies      = $args{cookies} || {};
+    my $default_lang = $args{default_lang} || 'en';
 
-    my $dict = decode_json($json);
-    $DICT_CACHE{$file} = $dict;
-    return $dict;
-}
-
-sub _parse_cookies {
-    my ($cookie_header) = @_;
-    my %cookies;
-
-    return \%cookies unless defined $cookie_header && length $cookie_header;
-
-    for my $pair (split /\s*;\s*/, $cookie_header) {
-        my ($k, $v) = split /=/, $pair, 2;
-        next unless defined $k && length $k;
-        $v = '' unless defined $v;
-        $cookies{$k} = $v;
+    if (_is_supported_lang($query_params->{lang})) {
+        return $query_params->{lang};
     }
 
-    return \%cookies;
-}
-
-sub _is_valid_lang {
-    my ($lang, $dict) = @_;
-    return 0 unless defined $lang && length $lang;
-    return exists $dict->{$lang};
-}
-
-sub get_lang {
-    my ($ctx) = @_;
-
-    my $dict   = $ctx->{lang_dict} || {};
-    my $params = $ctx->{params}    || {};
-    my $env    = $ctx->{env}       || \%ENV;
-
-    # 1. URL parameter
-    if (_is_valid_lang($params->{lang}, $dict)) {
-        return $params->{lang};
-    }
-
-    # 2. Cookie
-    my $cookies = _parse_cookies($env->{HTTP_COOKIE});
-    if (_is_valid_lang($cookies->{mark6_lang}, $dict)) {
+    if (_is_supported_lang($cookies->{mark6_lang})) {
         return $cookies->{mark6_lang};
     }
 
-    # 3. Default
-    return 'en';
+    return $default_lang;
 }
 
-sub t {
-    my ($ctx, $key) = @_;
-    my $dict = $ctx->{lang_dict} || {};
-    my $lang = $ctx->{lang} || 'en';
+sub load_dict {
+    my ($base_dir, $lang) = @_;
 
-    return $dict->{$lang}{$key}
-        // $dict->{en}{$key}
-        // $key;
+    $lang = _is_supported_lang($lang) ? $lang : 'en';
+
+    my $cache_key = join "\0", ($base_dir || ''), $lang;
+    return $CACHE{$cache_key} if exists $CACHE{$cache_key};
+
+    my $path = $base_dir . "/dat/lang/$lang.json";
+    my $dict = _read_lang_file($path, $lang);
+
+    if (!%{$dict} && $lang ne 'en') {
+        my $fallback = _read_lang_file($base_dir . '/dat/lang/en.json', 'en');
+        $dict = $fallback if %{$fallback};
+    }
+
+    if (!%{$dict}) {
+        $dict = _default_dict($lang);
+    }
+
+    $CACHE{$cache_key} = $dict;
+    return $dict;
+}
+
+sub text {
+    my ($ctx, $key) = @_;
+
+    return '' unless defined $key;
+
+    my $dict = $ctx->{dict} || {};
+    return exists $dict->{$key} ? $dict->{$key} : $key;
+}
+
+sub _read_lang_file {
+    my ($path, $lang) = @_;
+
+    return {} unless defined $path && -f $path;
+
+    open my $fh, '<:encoding(UTF-8)', $path
+        or return {};
+    local $/;
+    my $raw = <$fh>;
+    close $fh;
+
+    return {} unless defined $raw && $raw =~ /\S/;
+
+    my $data = _decode_json($raw);
+    if (!$data && $raw !~ /^\s*\{/) {
+        $data = _decode_json("{\n$raw\n}");
+    }
+
+    return _normalize_dict($data, $lang);
+}
+
+sub _decode_json {
+    my ($raw) = @_;
+    return eval { JSON::PP::decode_json($raw) };
+}
+
+sub _normalize_dict {
+    my ($data, $lang) = @_;
+
+    return {} unless ref $data eq 'HASH';
+
+    if (ref $data->{$lang} eq 'HASH') {
+        return $data->{$lang};
+    }
+
+    return $data;
+}
+
+sub _is_supported_lang {
+    my ($lang) = @_;
+    return defined $lang && $lang =~ /^(?:ja|en)$/ ? 1 : 0;
+}
+
+sub _default_dict {
+    my ($lang) = @_;
+
+    my %en = (
+        site_title      => 'MARK6',
+        login_title     => 'Login',
+        login_button    => 'Login',
+        logout_label    => 'Logout',
+        user_id         => 'User ID',
+        password        => 'Password',
+        login_failed    => 'Login failed.',
+        article_list    => 'Article List',
+        article_edit    => 'Article Edit',
+        article_new     => 'New Article',
+        title_label     => 'Title',
+        category_label  => 'Category',
+        body_label      => 'Body',
+        status_label    => 'Status',
+        save_button     => 'Save',
+        back_label      => 'Back',
+        empty_articles  => 'No articles yet.',
+        public_status   => 'Public',
+        draft_status    => 'Draft',
+    );
+
+    my %ja = (
+        site_title      => 'MARK6',
+        login_title     => 'Roguin',
+        login_button    => 'Roguin',
+        logout_label    => 'Roguauto',
+        user_id         => 'Yuza ID',
+        password        => 'Pasuwado',
+        login_failed    => 'Roguin ni shippai shimashita.',
+        article_list    => 'Kiji Ichiran',
+        article_edit    => 'Kiji Henshu',
+        article_new     => 'Shinki Kiji',
+        title_label     => 'Taitoru',
+        category_label  => 'Kategori',
+        body_label      => 'Honbun',
+        status_label    => 'Status',
+        save_button     => 'Hozon',
+        back_label      => 'Modoru',
+        empty_articles  => 'Kiji wa mada arimasen.',
+        public_status   => 'Kokai',
+        draft_status    => 'Shitagaki',
+    );
+
+    return $lang eq 'ja' ? \%ja : \%en;
 }
 
 1;
