@@ -24,5 +24,6 @@ data/*.bak
 data/*.tmp
 public/uploads/
 
-dat/session.jsonl
-dat/user.jsonl
+# JSON DB（本番データは除外）
+dat/*.jsonl
+!dat/*.sample.jsonl
