@@ -3,6 +3,7 @@ package Mark6::Auth;
 use strict;
 use warnings;
 use Digest::SHA qw(hmac_sha256 hmac_sha256_hex sha256_hex);
+use JSON::PP ();
 use Mark6::DataStore;
 
 my $DEFAULT_ITERATIONS = 120_000;
@@ -46,6 +47,84 @@ sub verify_password {
     );
 
     return _constant_time_eq($candidate, $stored);
+}
+
+sub load_users {
+    my ($self) = @_;
+    return $self->{store}->read_json('dat', 'users.json') || { version => 1, users => [] };
+}
+
+sub save_users {
+    my ($self, $users) = @_;
+    $users->{version} ||= 1;
+    $users->{users} ||= [];
+    return $self->{store}->write_json($users, 'dat', 'users.json');
+}
+
+sub find_user_by_name {
+    my ($self, $name) = @_;
+    return undef unless defined $name && $name ne '';
+
+    my $users = $self->load_users;
+    for my $user (@{$users->{users} || []}) {
+        return $user if ($user->{name} || '') eq $name;
+    }
+
+    return undef;
+}
+
+sub find_user_by_id {
+    my ($self, $id) = @_;
+    return undef unless defined $id && $id ne '';
+
+    my $users = $self->load_users;
+    for my $user (@{$users->{users} || []}) {
+        return $user if ($user->{id} || '') eq "$id";
+    }
+
+    return undef;
+}
+
+sub authenticate {
+    my ($self, $name, $password) = @_;
+    my $user = $self->find_user_by_name($name);
+    return undef unless $user;
+    return undef if $user->{password_reset_required};
+    return undef unless $self->verify_password($password, $user->{password_hash} || '');
+    return $user;
+}
+
+sub create_user {
+    my ($self, %args) = @_;
+    my $name = $args{name} || '';
+    my $password = $args{password} || '';
+    my $rank = $args{rank} || 'master';
+
+    die "User name is required" if $name eq '';
+    die "Password is required" if $password eq '';
+    die "Invalid rank" unless $rank =~ /\A(?:master|staff|writer)\z/;
+
+    my $users = $self->load_users;
+    for my $user (@{$users->{users} || []}) {
+        die "User already exists: $name" if ($user->{name} || '') eq $name;
+    }
+
+    my $now = time;
+    my $user = {
+        id                      => "$now",
+        name                    => $name,
+        rank                    => $rank,
+        password_hash           => $self->hash_password($password),
+        legacy_password_hash    => '',
+        password_reset_required => JSON::PP::false,
+        created_at              => _epoch_to_iso($now),
+        updated_at              => _epoch_to_iso($now),
+    };
+
+    push @{$users->{users}}, $user;
+    $self->save_users($users);
+
+    return $user;
 }
 
 sub create_session {
@@ -185,4 +264,3 @@ sub _epoch_to_iso {
 }
 
 1;
-
