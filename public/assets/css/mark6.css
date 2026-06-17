@@ -150,6 +150,70 @@ h3 {
   color: var(--muted);
 }
 
+.error {
+  color: #b42318;
+}
+
+.button,
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.admin-toolbar {
+  margin-bottom: 18px;
+}
+
+.admin-list {
+  border-top: 1px solid var(--line);
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.admin-actions form {
+  margin: 0;
+}
+
+.admin-form {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.admin-login input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
 .site-footer {
   padding: 24px;
   border-top: 1px solid var(--line);
@@ -172,4 +236,3 @@ h3 {
     width: 100%;
   }
 }
-

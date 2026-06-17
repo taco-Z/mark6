@@ -143,6 +143,7 @@ sub create_session {
         expires_epoch   => $now + ($args{ttl} || $SESSION_TTL),
         ip_hash         => _fingerprint($args{ip} || ''),
         user_agent_hash => _fingerprint($args{user_agent} || ''),
+        csrf_token      => $csrf_token,
         csrf_token_hash => sha256_hex($csrf_token),
     };
 

@@ -64,7 +64,7 @@ Mark6::CGI::print_html(<<"HTML");
     <section class="article-detail">
       <h1>Dashboard</h1>
       <p>Logged in as <strong>$name</strong> ($rank).</p>
-      <p>Next: article editor.</p>
+      <p><a class="button" href="articles.cgi">Manage Articles</a></p>
     </section>
   </main>
 </body>
@@ -87,4 +87,3 @@ sub default_root {
 
     return "$FindBin::Bin/..";
 }
-
