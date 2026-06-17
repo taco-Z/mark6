@@ -4,7 +4,22 @@ use strict;
 use warnings;
 use FindBin;
 use Getopt::Long qw(GetOptions);
-use lib "$FindBin::Bin/../lib";
+
+BEGIN {
+    my @lib_candidates = (
+        './lib',
+        "$FindBin::Bin/../lib",
+        '../lib',
+    );
+
+    for my $lib (@lib_candidates) {
+        if (-d $lib) {
+            unshift @INC, $lib;
+            last;
+        }
+    }
+}
+
 use Mark6::Mark5Migration;
 
 my ($from, $to, $help);
@@ -55,4 +70,3 @@ Example:
 USAGE
     exit $exit;
 }
-

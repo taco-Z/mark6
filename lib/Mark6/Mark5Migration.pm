@@ -307,11 +307,8 @@ sub _read_lines {
     my $raw = <$fh>;
     close $fh;
 
-    my $text;
-    eval { $text = decode('UTF-8', $raw, FB_CROAK); 1 }
-        or $text = decode('CP932', $raw);
-
-    chomp(my @lines = split(/\r\n|\n|\r/, $text));
+    my @raw_lines = split(/\r\n|\n|\r/, $raw);
+    my @lines = map { _decode_text_line($_) } @raw_lines;
     return \@lines;
 }
 
@@ -327,6 +324,14 @@ sub _decode_mark5 {
     $value =~ s/<br>/\n/g;
     $value =~ s/<return>/\n/g;
     return $value;
+}
+
+sub _decode_text_line {
+    my ($raw) = @_;
+    my $text;
+    eval { $text = decode('UTF-8', $raw, FB_CROAK); 1 }
+        or $text = decode('CP932', $raw);
+    return $text;
 }
 
 sub _tags {

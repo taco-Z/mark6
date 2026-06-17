@@ -1,6 +1,8 @@
 dat/sessions/*
 dat/security/*
 dat/logs/*.jsonl
+dat/legacy/
+dat/migration_report.json
 *.log
 *.tmp
 lockdir/
@@ -8,4 +10,3 @@ lockdir/
 !dat/sessions/.gitkeep
 !dat/security/.gitkeep
 !dat/logs/.gitkeep
-
