@@ -29,6 +29,11 @@ my $auth = Mark6::Auth->new(root => $ROOT);
 my %cookies = Mark6::CGI::cookies();
 my $session = $auth->read_session($cookies{mark6_session} || '');
 
+unless (has_users()) {
+    Mark6::CGI::redirect('setup.cgi');
+    exit;
+}
+
 unless ($session) {
     Mark6::CGI::redirect('login.cgi');
     exit;
@@ -73,6 +78,11 @@ Mark6::CGI::print_html(<<"HTML");
 </body>
 </html>
 HTML
+
+sub has_users {
+    my $users = $auth->load_users;
+    return scalar @{$users->{users} || []};
+}
 
 sub default_root {
     my $script = abs_path($0);

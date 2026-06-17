@@ -218,6 +218,7 @@ button {
 .admin-form select,
 .admin-form textarea,
 .admin-login input,
+.admin-login select,
 .media-upload input,
 .media-card input {
   width: 100%;

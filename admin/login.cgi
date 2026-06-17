@@ -29,6 +29,11 @@ my $auth = Mark6::Auth->new(root => $ROOT);
 my %params = Mark6::CGI::request_params();
 my $method = $ENV{REQUEST_METHOD} || 'GET';
 
+unless (has_users()) {
+    Mark6::CGI::redirect('setup.cgi');
+    exit;
+}
+
 if ($method eq 'POST') {
     my $user = $auth->authenticate($params{name} || '', $params{password} || '');
 
@@ -50,6 +55,11 @@ if ($method eq 'POST') {
 }
 
 render_login('');
+
+sub has_users {
+    my $users = $auth->load_users;
+    return scalar @{$users->{users} || []};
+}
 
 sub render_login {
     my ($message) = @_;
@@ -103,4 +113,3 @@ sub default_root {
 
     return "$FindBin::Bin/..";
 }
-
