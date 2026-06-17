@@ -1,0 +1,16 @@
+{
+   "admin.dashboard.edit_home" : "ホーム編集",
+   "admin.dashboard.logged_in_as" : "ログイン中",
+   "admin.dashboard.manage_articles" : "記事管理",
+   "admin.dashboard.manage_media" : "メディア管理",
+   "admin.dashboard.site_settings" : "サイト設定",
+   "admin.dashboard.title" : "ダッシュボード",
+   "admin.nav.articles" : "記事",
+   "admin.nav.dashboard" : "ダッシュボード",
+   "admin.nav.home" : "ホーム",
+   "admin.nav.logout" : "ログアウト",
+   "admin.nav.media" : "メディア",
+   "admin.nav.settings" : "設定",
+   "admin.nav.view_site" : "サイト表示",
+   "admin.title" : "管理画面"
+}

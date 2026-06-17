@@ -19,6 +19,17 @@ write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
     site => { title => 'MARK6 Test', language => 'ja', base_url => '' },
 });
+make_path(File::Spec->catdir($root, 'dat', 'lang'));
+write_json(File::Spec->catfile($root, 'dat', 'lang', 'ja.json'), {
+    'admin.title' => '管理画面',
+    'admin.nav.dashboard' => 'ダッシュボード',
+    'admin.nav.home' => 'ホーム',
+    'admin.nav.articles' => '記事',
+    'admin.nav.media' => 'メディア',
+    'admin.nav.settings' => '設定',
+    'admin.nav.view_site' => 'サイト表示',
+    'admin.nav.logout' => 'ログアウト',
+});
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
     body => '',
@@ -51,9 +62,10 @@ for my $case (
         cookie => "mark6_session=$session_id",
     );
 
-    like($page, qr/MARK6 Admin/, "$title page uses admin layout");
+    like($page, qr/MARK6 管理画面/, "$title page uses admin layout");
     like($page, qr/class="site-nav admin-nav"/, "$title page uses shared admin nav");
     like($page, qr/<a class="active" href="\Q$active_href\E">/, "$title page marks active nav");
+    like($page, qr/サイト表示/, "$title nav uses Japanese labels");
     like($page, qr/home\.cgi/, "$title nav links home");
     like($page, qr/articles\.cgi/, "$title nav links articles");
     like($page, qr/media\.cgi/, "$title nav links media");

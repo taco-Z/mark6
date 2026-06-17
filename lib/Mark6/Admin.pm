@@ -3,14 +3,17 @@ package Mark6::Admin;
 use strict;
 use warnings;
 use Mark6::CGI;
+use Mark6::Lang;
 
 sub render_page {
     my (%args) = @_;
     my $title = $args{title} || 'Admin';
     my $content = $args{content} || '';
     my $active = $args{active} || '';
+    my $lang = $args{lang} || Mark6::Lang->new(root => $args{root} || '.');
     my $safe_title = Mark6::CGI::escape_html($title);
-    my $nav = admin_nav($active);
+    my $admin_title = Mark6::CGI::escape_html($lang->t('admin.title', 'Admin'));
+    my $nav = admin_nav($active, $lang);
 
     Mark6::CGI::print_html(<<"HTML");
 <!doctype html>
@@ -18,12 +21,12 @@ sub render_page {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>$safe_title - MARK6 Admin</title>
+  <title>$safe_title - MARK6 $admin_title</title>
   <link rel="stylesheet" href="../public/assets/css/mark6.css">
 </head>
 <body>
   <header class="site-header admin-header">
-    <a class="brand" href="index.cgi">MARK6 Admin</a>
+    <a class="brand" href="index.cgi">MARK6 $admin_title</a>
     $nav
   </header>
   <main class="site-main admin-main">$content</main>
@@ -33,19 +36,22 @@ HTML
 }
 
 sub admin_nav {
-    my ($active) = @_;
+    my ($active, $lang) = @_;
+    $lang ||= Mark6::Lang->new;
+
     my @items = (
-        [dashboard => 'Dashboard', 'index.cgi'],
-        [home      => 'Home',      'home.cgi'],
-        [articles  => 'Articles',  'articles.cgi'],
-        [media     => 'Media',     'media.cgi'],
-        [settings  => 'Settings',  'settings.cgi'],
-        [view      => 'View Site', '../public/index.cgi'],
-        [logout    => 'Logout',    'logout.cgi'],
+        [dashboard => 'admin.nav.dashboard', 'Dashboard', 'index.cgi'],
+        [home      => 'admin.nav.home',      'Home',      'home.cgi'],
+        [articles  => 'admin.nav.articles',  'Articles',  'articles.cgi'],
+        [media     => 'admin.nav.media',     'Media',     'media.cgi'],
+        [settings  => 'admin.nav.settings',  'Settings',  'settings.cgi'],
+        [view      => 'admin.nav.view_site', 'View Site', '../public/index.cgi'],
+        [logout    => 'admin.nav.logout',    'Logout',    'logout.cgi'],
     );
 
     my $links = join "\n", map {
-        my ($key, $label, $href) = @{$_};
+        my ($key, $label_key, $fallback, $href) = @{$_};
+        my $label = Mark6::CGI::escape_html($lang->t($label_key, $fallback));
         my $class = $key eq $active ? ' class="active"' : '';
         qq|      <a$class href="$href">$label</a>|;
     } @items;
@@ -58,4 +64,3 @@ HTML
 }
 
 1;
-

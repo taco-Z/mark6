@@ -242,6 +242,7 @@ sub render_page {
     Mark6::Admin::render_page(
         title   => $title,
         active  => 'articles',
+        root    => $ROOT,
         content => $content,
     );
 }

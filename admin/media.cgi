@@ -238,6 +238,7 @@ sub render_page {
     Mark6::Admin::render_page(
         title   => $title,
         active  => 'media',
+        root    => $ROOT,
         content => $content,
     );
 }
