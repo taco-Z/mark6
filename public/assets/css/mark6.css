@@ -169,6 +169,18 @@ button {
   cursor: pointer;
 }
 
+.button.secondary {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--accent-strong);
+}
+
+.admin-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .admin-toolbar {
   margin-bottom: 18px;
 }
@@ -205,13 +217,48 @@ button {
 .admin-form input,
 .admin-form select,
 .admin-form textarea,
-.admin-login input {
+.admin-login input,
+.media-upload input,
+.media-card input {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
   background: #fff;
   color: var(--text);
   font: inherit;
+}
+
+.media-upload {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 28px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.media-card {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.media-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  border-bottom: 1px solid var(--line);
+}
+
+.media-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
 }
 
 .site-footer {

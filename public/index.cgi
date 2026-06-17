@@ -212,11 +212,23 @@ sub render_tags {
 sub render_image {
     my ($article, $class) = @_;
     my $image = $article->{image} || '';
-    return '' unless $image ne '' && $image =~ /\A[0-9A-Za-z_.-]+\z/;
+    return '' unless safe_image_path($image);
 
-    my $src = escape_attr("../img/$image");
+    my $src = escape_attr(image_src($image));
     my $alt = escape_attr($article->{title} || '');
     return qq|<img class="$class" src="$src" alt="$alt">|;
+}
+
+sub image_src {
+    my ($image) = @_;
+    return $image =~ m{\Aimg/} ? "../$image" : "../img/$image";
+}
+
+sub safe_image_path {
+    my ($value) = @_;
+    return 0 unless defined $value && $value ne '';
+    return 0 if $value =~ /\.\./;
+    return $value =~ /\A[0-9A-Za-z_.\/-]+\z/ ? 1 : 0;
 }
 
 sub render_not_found {

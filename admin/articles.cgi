@@ -5,7 +5,6 @@ use warnings;
 use Cwd qw(abs_path getcwd);
 use File::Basename qw(dirname);
 use FindBin;
-use JSON::PP ();
 
 BEGIN {
     my @lib_candidates = (
@@ -101,7 +100,7 @@ sub article_row {
 <article class="admin-row">
   <div>
     <strong>$title</strong>
-    <div class="meta">$status · $date · ID $id</div>
+    <div class="meta">$status / $date / ID $id</div>
   </div>
   <div class="admin-actions">
     <a href="../public/index.cgi?order=focus&amp;tar=$id">View</a>
@@ -125,6 +124,7 @@ sub render_form {
     my $image = Mark6::CGI::escape_html($article->{image} || '');
     my $intro = Mark6::CGI::escape_html($article->{intro} || '');
     my $body = Mark6::CGI::escape_html($article->{body} || '');
+    my $media_options = media_options($article->{image} || '');
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $status = $article->{status} || 'draft';
     my $draft_selected = $status eq 'draft' ? 'selected' : '';
@@ -146,7 +146,13 @@ sub render_form {
       </select>
     </label>
     <label>Tags<br><input name="tags" type="text" value="$tags"></label>
-    <label>Image filename<br><input name="image" type="text" value="$image"></label>
+    <label>Main image<br>
+      <select name="image">
+        <option value="">No image</option>
+        $media_options
+      </select>
+    </label>
+    <label>Image path<br><input name="image_manual" type="text" value="$image"></label>
     <label>Intro HTML<br><textarea name="intro" rows="6">$intro</textarea></label>
     <label>Body HTML<br><textarea name="body" rows="12">$body</textarea></label>
     <button type="submit">Save</button>
@@ -169,7 +175,7 @@ sub save_article {
         title      => $params{title} || 'Untitled',
         slug       => $existing->{slug} || '',
         tags       => parse_tags($params{tags} || ''),
-        image      => safe_filename($params{image} || ''),
+        image      => safe_image_path($params{image_manual} || $params{image} || ''),
         intro      => $params{intro} || '',
         body       => $params{body} || '',
         writer_id  => $existing->{writer_id} || $user->{id},
@@ -273,10 +279,44 @@ sub normalize_status {
     return $status eq 'published' ? 'published' : 'draft';
 }
 
-sub safe_filename {
+sub media_options {
+    my ($selected) = @_;
+    my @media = load_media();
+    return '' unless @media;
+
+    return join "\n", map {
+        my $path = $_->{path} || '';
+        my $label = $_->{original_filename} || $_->{filename} || $path;
+        my $safe_path = Mark6::CGI::escape_html($path);
+        my $safe_label = Mark6::CGI::escape_html($label);
+        my $is_selected = $path eq $selected ? 'selected' : '';
+        qq|<option value="$safe_path" $is_selected>$safe_label</option>|;
+    } @media;
+}
+
+sub load_media {
+    my $dir = "$ROOT/dat/media";
+    return () unless -d $dir;
+
+    opendir my $dh, $dir or die "Cannot open $dir: $!";
+    my @files = grep { /\.json\z/ } readdir $dh;
+    closedir $dh;
+
+    my @media;
+    for my $file (@files) {
+        my $item = $store->read_json('dat', 'media', $file);
+        next unless $item && ($item->{status} || 'active') eq 'active';
+        push @media, $item;
+    }
+
+    return sort { ($b->{created_at} || '') cmp ($a->{created_at} || '') } @media;
+}
+
+sub safe_image_path {
     my ($value) = @_;
     return '' unless defined $value;
-    return $value =~ /\A[0-9A-Za-z_.-]+\z/ ? $value : '';
+    return '' if $value =~ /\.\./;
+    return $value =~ /\A[0-9A-Za-z_.\/-]+\z/ ? $value : '';
 }
 
 sub iso_now {
@@ -307,4 +347,3 @@ sub default_root {
 
     return "$FindBin::Bin/..";
 }
-

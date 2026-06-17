@@ -64,7 +64,10 @@ Mark6::CGI::print_html(<<"HTML");
     <section class="article-detail">
       <h1>Dashboard</h1>
       <p>Logged in as <strong>$name</strong> ($rank).</p>
-      <p><a class="button" href="articles.cgi">Manage Articles</a></p>
+      <div class="admin-menu">
+        <a class="button" href="articles.cgi">Manage Articles</a>
+        <a class="button secondary" href="media.cgi">Manage Media</a>
+      </div>
     </section>
   </main>
 </body>
