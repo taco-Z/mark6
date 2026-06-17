@@ -72,6 +72,7 @@ Mark6::CGI::print_html(<<"HTML");
       <div class="admin-menu">
         <a class="button" href="articles.cgi">Manage Articles</a>
         <a class="button secondary" href="media.cgi">Manage Media</a>
+        <a class="button secondary" href="settings.cgi">Settings</a>
       </div>
     </section>
   </main>

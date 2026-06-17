@@ -154,6 +154,10 @@ h3 {
   color: #b42318;
 }
 
+.notice {
+  color: #067647;
+}
+
 .button,
 button {
   display: inline-flex;
@@ -212,6 +216,20 @@ button {
 .admin-form {
   display: grid;
   gap: 16px;
+}
+
+.admin-form fieldset {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.admin-form legend {
+  padding: 0 6px;
+  font-weight: 700;
 }
 
 .admin-form input,
