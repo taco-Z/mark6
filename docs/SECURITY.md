@@ -36,6 +36,8 @@ Path=/
 
 If the deployment truly needs zero cookies, support an optional admin-only URL token mode later, but do not make that the default because URLs leak through logs and history.
 
+Implementation starts in `lib/Mark6/Auth.pm`.
+
 ## Password Hashing
 
 Prefer a modern hash:
@@ -45,6 +47,8 @@ Prefer a modern hash:
 - PBKDF2-HMAC-SHA256 as the minimal portable fallback.
 
 Do not use Perl `crypt()` as the MARK6 default.
+
+The first MARK6 implementation uses PBKDF2-HMAC-SHA256 as the portable baseline. Argon2id or bcrypt can be added later when deployment dependencies are known.
 
 ## CSRF
 
@@ -80,4 +84,3 @@ Recommended production permissions:
 - CGI files: readable/executable by web server.
 - `dat/`, `file/`, `img/`: writable by web server.
 - `dat/sessions/`: not web-readable.
-
