@@ -22,6 +22,7 @@ BEGIN {
 }
 
 use Mark6::Auth;
+use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::DataStore;
 
@@ -238,30 +239,11 @@ sub blank_article {
 
 sub render_page {
     my ($title, $content) = @_;
-    my $safe_title = Mark6::CGI::escape_html($title);
-
-    Mark6::CGI::print_html(<<"HTML");
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>$safe_title - MARK6 Admin</title>
-  <link rel="stylesheet" href="../public/assets/css/mark6.css">
-</head>
-<body>
-  <header class="site-header">
-    <a class="brand" href="index.cgi">MARK6 Admin</a>
-    <nav class="site-nav">
-      <a href="index.cgi">Dashboard</a>
-      <a href="../public/index.cgi">View Site</a>
-      <a href="logout.cgi">Logout</a>
-    </nav>
-  </header>
-  <main class="site-main">$content</main>
-</body>
-</html>
-HTML
+    Mark6::Admin::render_page(
+        title   => $title,
+        active  => 'articles',
+        content => $content,
+    );
 }
 
 sub parse_tags {

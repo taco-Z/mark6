@@ -22,6 +22,7 @@ BEGIN {
 }
 
 use Mark6::Auth;
+use Mark6::Admin;
 use Mark6::CGI qw();
 
 my $ROOT = $ENV{MARK6_ROOT} || default_root();
@@ -48,38 +49,22 @@ unless ($user) {
 my $name = Mark6::CGI::escape_html($user->{name});
 my $rank = Mark6::CGI::escape_html($user->{rank});
 
-Mark6::CGI::print_html(<<"HTML");
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MARK6 Admin</title>
-  <link rel="stylesheet" href="../public/assets/css/mark6.css">
-</head>
-<body>
-  <header class="site-header">
-    <a class="brand" href="index.cgi">MARK6 Admin</a>
-    <nav class="site-nav">
-      <a href="../public/index.cgi">View Site</a>
-      <a href="logout.cgi">Logout</a>
-    </nav>
-  </header>
-  <main class="site-main">
-    <section class="article-detail">
+Mark6::Admin::render_page(
+    title => 'Dashboard',
+    active => 'dashboard',
+    content => <<"HTML",
+<section class="article-detail">
       <h1>Dashboard</h1>
       <p>Logged in as <strong>$name</strong> ($rank).</p>
       <div class="admin-menu">
+        <a class="button" href="home.cgi">Edit Home</a>
         <a class="button" href="articles.cgi">Manage Articles</a>
         <a class="button secondary" href="media.cgi">Manage Media</a>
-        <a class="button secondary" href="home.cgi">Edit Home</a>
-        <a class="button secondary" href="settings.cgi">Settings</a>
+        <a class="button secondary" href="settings.cgi">Site Settings</a>
       </div>
-    </section>
-  </main>
-</body>
-</html>
+</section>
 HTML
+);
 
 sub has_users {
     my $users = $auth->load_users;

@@ -54,6 +54,17 @@ img {
   white-space: nowrap;
 }
 
+.admin-nav {
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.admin-nav a.active {
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .site-main {
   width: min(960px, calc(100% - 32px));
   margin: 32px auto 48px;
