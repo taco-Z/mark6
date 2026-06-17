@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "site": {
+    "title": "MARK6 Site",
+    "base_url": "",
+    "language": "ja"
+  },
+  "features": {
+    "tags": true,
+    "newest": true,
+    "popular": true,
+    "shop": false,
+    "ai": false
+  },
+  "display": {
+    "articles_per_page": 20,
+    "mini_articles": 15
+  },
+  "shop": {
+    "title": "Shop",
+    "paypal_id": ""
+  }
+}
+

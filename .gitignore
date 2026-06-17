@@ -1,0 +1,11 @@
+dat/sessions/*
+dat/security/*
+dat/logs/*.jsonl
+*.log
+*.tmp
+lockdir/
+
+!dat/sessions/.gitkeep
+!dat/security/.gitkeep
+!dat/logs/.gitkeep
+
