@@ -77,6 +77,13 @@ is($media->{original_filename}, 'sample.png', 'metadata keeps original filename'
 like($media->{path}, qr{\Aimg/uploads/\d{4}/\d{2}/}, 'metadata path is under img/uploads');
 ok(-e $uploaded_path, 'uploaded image file written');
 
+my $media_after_upload = run_cgi(
+    script => File::Spec->catfile('admin', 'media.cgi'),
+    method => 'GET',
+    cookie => "mark6_session=$session_id",
+);
+like($media_after_upload, qr/onsubmit="return confirm\('Delete this media file\?'\);"/, 'media delete confirms before submit');
+
 my $articles_form = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
     method => 'GET',

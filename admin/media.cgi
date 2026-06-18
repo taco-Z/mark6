@@ -116,7 +116,7 @@ sub media_card {
     <div class="meta">$size bytes</div>
     <label>Path<input type="text" value="$path" readonly onclick="this.select()"></label>
     <label>HTML<input type="text" value="$img_tag" readonly onclick="this.select()"></label>
-    <form method="post" action="media.cgi" enctype="multipart/form-data">
+    <form method="post" action="media.cgi" enctype="multipart/form-data" onsubmit="return confirm('Delete this media file?');">
       <input type="hidden" name="command" value="delete">
       <input type="hidden" name="id" value="$id">
       <input type="hidden" name="csrf_token" value="$csrf">

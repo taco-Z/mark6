@@ -120,7 +120,7 @@ sub article_row {
   <div class="admin-actions">
     <a href="$view_url" target="_blank" rel="noopener">View</a>
     <a href="articles.cgi?command=edit&amp;id=$id">Edit</a>
-    <form method="post" action="articles.cgi">
+    <form method="post" action="articles.cgi" onsubmit="return confirm('Delete this article?');">
       <input type="hidden" name="command" value="delete">
       <input type="hidden" name="id" value="$id">
       <input type="hidden" name="csrf_token" value="$csrf">

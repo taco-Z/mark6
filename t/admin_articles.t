@@ -79,6 +79,7 @@ my $list = run_cgi(
 );
 like($list, qr/テスト記事/, 'saved article appears in admin list');
 like($list, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/" target="_blank" rel="noopener"/, 'view link opens public article in new tab');
+like($list, qr/onsubmit="return confirm\('Delete this article\?'\);"/, 'delete confirms before submit');
 
 my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is($saved_article->{default_lang}, 'ja', 'default language saved');
