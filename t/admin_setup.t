@@ -27,6 +27,15 @@ my $index_before_setup = run_cgi(
 );
 like($index_before_setup, qr/Location: setup\.cgi/, 'admin index redirects to setup when no users exist');
 
+open my $empty_users, '>:raw', File::Spec->catfile($root, 'dat', 'users.json') or die "Cannot empty users.json: $!";
+close $empty_users;
+my $empty_users_index = run_cgi(
+    script => File::Spec->catfile('admin', 'index.cgi'),
+    method => 'GET',
+);
+like($empty_users_index, qr/Location: setup\.cgi/, 'admin index redirects to setup when users file is empty');
+write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, users => [] });
+
 my $setup_form = run_cgi(
     script => File::Spec->catfile('admin', 'setup.cgi'),
     method => 'GET',
@@ -125,4 +134,3 @@ sub read_json {
     close $fh;
     return JSON::PP->new->utf8->decode($body);
 }
-

@@ -37,6 +37,7 @@ sub read_json {
     my $body = <$fh>;
     close $fh;
 
+    return undef unless defined $body && $body =~ /\S/;
     return decode_json($body);
 }
 
