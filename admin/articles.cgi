@@ -182,6 +182,9 @@ sub save_article {
     my $now = iso_now();
     my $default_lang = normalize_lang($params{default_lang} || $existing->{default_lang} || $config->{site}{language} || 'ja');
     my $langs = collect_langs();
+    $langs->{$default_lang}{title} ||= $params{title} || '';
+    $langs->{$default_lang}{description} ||= $params{intro} || '';
+    $langs->{$default_lang}{body} ||= $params{body} || '';
     my $default_title = $langs->{$default_lang}{title} || $existing->{title} || 'Untitled';
     my $default_description = $langs->{$default_lang}{description} || $existing->{intro} || '';
     my $default_body = $langs->{$default_lang}{body} || $existing->{body} || '';

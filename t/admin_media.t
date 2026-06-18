@@ -109,7 +109,7 @@ my $public = run_cgi(
     method => 'GET',
     query => 'order=focus&tar=image-article',
 );
-like($public, qr/src="\.\.\/img\/uploads\//, 'public image src uses upload path');
+like($public, qr/src="\/img\/uploads\//, 'public image src uses upload path');
 
 my ($media_id) = $media_files[0] =~ /([^\\\/]+)\.json\z/;
 my ($delete_body, $delete_boundary) = multipart_body(

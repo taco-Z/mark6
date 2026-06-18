@@ -21,7 +21,7 @@ write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
         default_lang => 'ja',
         langs => ['ja', 'en'],
         node => 'oita360',
-        base_url => '',
+        base_url => '/test/mark6',
     },
     features => {
         tags => JSON::PP::true,
@@ -67,13 +67,15 @@ my $home = run_cgi('');
 like($home, qr/Content-Type: text\/html; charset=UTF-8/, 'prints UTF-8 content type');
 like($home, qr/ようこそ/, 'renders home title');
 like($home, qr/別府駅/, 'renders default language article summary');
-like($home, qr/href="\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
+like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
 like($home, qr/class="language-switch"/, 'renders language switch links');
+like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css"/, 'renders asset URL from asset base');
+like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
 
 my $detail = run_cgi('order=focus&tar=1375451805');
 like($detail, qr/別府駅/, 'renders legacy detail title');
 like($detail, qr/日本語本文です。/, 'renders legacy detail body');
-like($detail, qr/href="\/en\/oita360\/beppu-station\/"/, 'detail links alternate language');
+like($detail, qr/href="\/test\/mark6\/en\/oita360\/beppu-station\/"/, 'detail links alternate language');
 
 my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
@@ -95,6 +97,7 @@ like($en_detail, qr/日本語本文です。/, 'falls back to default body when 
 
 my $list = run_cgi('order=article&tag=News');
 like($list, qr/Tag: News/, 'renders tag page');
+like($list, qr/href="\/test\/mark6\/ja\/\?tag=News"/, 'renders tag URL from site base');
 like($list, qr/別府駅/, 'renders filtered article');
 
 remove_tree($root);

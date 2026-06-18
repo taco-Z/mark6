@@ -32,6 +32,8 @@ my %in = parse_query();
 my $config = $store->read_json('dat', 'config.json') || {};
 my $home   = $store->read_json('dat', 'home.json') || {};
 my @supported_langs = Mark6::Article::supported_langs($config);
+my $site_base = site_base($config);
+my $asset_base = asset_base($config, $site_base);
 my $request_path = request_path();
 my $route = parse_route($request_path, \@supported_langs, $config);
 my $current_lang = current_lang($config, \@supported_langs, $route);
@@ -94,6 +96,7 @@ sub parse_query {
 
 sub request_path {
     my $path = $ENV{PATH_INFO} || '';
+    $path = $in{path} || '' if $path eq '';
     if ($path eq '') {
         $path = $ENV{REQUEST_URI} || '';
         $path =~ s/\?.*\z//;
@@ -235,13 +238,12 @@ HTML
 
 sub render_article_summary {
     my ($article) = @_;
-    my $id = escape_attr($article->{id} || '');
     my $title = escape_html(Mark6::Article::title_for($article, $current_lang, $config));
     my $date = escape_html(format_date($article->{created_at} || ''));
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
     my $tags = render_tags($article->{tags} || []);
     my $image = render_image($article, 'summary-image');
-    my $href = escape_attr(Mark6::Article::public_path($article, $current_lang, $config));
+    my $href = escape_attr(article_url($article, $current_lang));
 
     return <<"HTML";
 <article class="article-summary">
@@ -270,7 +272,7 @@ sub render_article_detail {
 
     return <<"HTML";
 <article class="article-detail">
-  <a class="back-link" href="index.cgi?order=article">Articles</a>
+  <a class="back-link" href="@{[escape_attr(article_list_url())]}">Articles</a>
   <div class="meta">$date</div>
   $lang_links
   <h1>$title</h1>
@@ -288,7 +290,8 @@ sub render_tags {
     my $links = join ' ', map {
         my $tag = escape_html($_);
         my $url = escape_attr(url_encode($_));
-        qq|<a href="index.cgi?order=article&amp;tag=$url">$tag</a>|;
+        my $href = escape_attr(article_list_url("tag=$url"));
+        qq|<a href="$href">$tag</a>|;
     } @{$tags};
 
     return qq|<nav class="tags">$links</nav>|;
@@ -309,8 +312,8 @@ sub render_language_links {
     my $links = join ' ', map {
         my $lang = $_;
         my $href = $article
-            ? Mark6::Article::public_path($article, $lang, $config)
-            : "/$lang/";
+            ? article_url($article, $lang)
+            : lang_url($lang);
         $href = escape_attr($href);
         my $class = $lang eq $current_lang ? ' class="active"' : '';
         qq|<a$class href="$href">$lang</a>|;
@@ -321,7 +324,7 @@ sub render_language_links {
 
 sub image_src {
     my ($image) = @_;
-    return $image =~ m{\Aimg/} ? "../$image" : "../img/$image";
+    return $image =~ m{\Aimg/} ? site_url($image) : site_url("img/$image");
 }
 
 sub safe_image_path {
@@ -337,11 +340,12 @@ sub safe_segment {
 }
 
 sub render_not_found {
-    return <<'HTML';
+    my $home = escape_attr(lang_url($current_lang));
+    return <<"HTML";
 <section class="not-found">
   <h1>Article not found</h1>
   <p>The requested article is not available.</p>
-  <p><a href="index.cgi">Back to home</a></p>
+  <p><a href="$home">Back to home</a></p>
 </section>
 HTML
 }
@@ -351,7 +355,9 @@ sub render_page {
     my $safe_page_title = escape_html($page_title);
     my $safe_site_title = escape_html($site_title);
     my $language_links = render_language_links();
-    my $home_href = escape_attr("/$current_lang/");
+    my $home_href = escape_attr(lang_url($current_lang));
+    my $articles_href = escape_attr(article_list_url());
+    my $css_href = escape_attr(asset_url('css/mark6.css'));
 
     return <<"HTML";
 Content-Type: text/html; charset=UTF-8
@@ -362,14 +368,14 @@ Content-Type: text/html; charset=UTF-8
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$safe_page_title</title>
-  <link rel="stylesheet" href="assets/css/mark6.css">
+  <link rel="stylesheet" href="$css_href">
 </head>
 <body>
   <header class="site-header">
     <a class="brand" href="$home_href">$safe_site_title</a>
     <nav class="site-nav">
       <a href="$home_href">Home</a>
-      <a href="index.cgi?order=article">Articles</a>
+      <a href="$articles_href">Articles</a>
     </nav>
     $language_links
   </header>
@@ -385,6 +391,66 @@ HTML
 sub trusted_html {
     my ($html) = @_;
     return $html;
+}
+
+sub site_base {
+    my ($config) = @_;
+    my $base = value_at($config, 'site', 'base_url') || '';
+    if ($base eq '') {
+        $base = $ENV{SCRIPT_NAME} || '';
+        $base =~ s{/public/index\.cgi\z}{}i;
+        $base =~ s{/index\.cgi\z}{}i;
+    }
+
+    $base =~ s{\\}{/}g;
+    $base =~ s{/+\z}{};
+    $base = '' if $base eq '/';
+    return $base;
+}
+
+sub asset_base {
+    my ($config, $site_base) = @_;
+    my $base = value_at($config, 'site', 'asset_base') || '';
+    return clean_url_base($base) if $base ne '';
+    return site_url('assets');
+}
+
+sub clean_url_base {
+    my ($base) = @_;
+    $base =~ s{\\}{/}g;
+    $base =~ s{/+\z}{};
+    return $base;
+}
+
+sub site_url {
+    my ($path) = @_;
+    $path ||= '';
+    $path =~ s{\A/+}{};
+    return $site_base eq '' ? "/$path" : "$site_base/$path";
+}
+
+sub asset_url {
+    my ($path) = @_;
+    $path ||= '';
+    $path =~ s{\A/+}{};
+    return "$asset_base/$path";
+}
+
+sub lang_url {
+    my ($lang) = @_;
+    return site_url("$lang/");
+}
+
+sub article_url {
+    my ($article, $lang) = @_;
+    my $path = Mark6::Article::public_path($article, $lang, $config);
+    return site_url($path);
+}
+
+sub article_list_url {
+    my ($query) = @_;
+    my $url = lang_url($current_lang);
+    return defined $query && $query ne '' ? "$url?$query" : $url;
 }
 
 sub escape_html {
