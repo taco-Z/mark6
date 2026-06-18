@@ -25,8 +25,9 @@ use Mark6::Auth;
 use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::Lang;
+use Mark6::Root;
 
-my $ROOT = $ENV{MARK6_ROOT} || default_root();
+my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
 my %cookies = Mark6::CGI::cookies();
 my $session = $auth->read_session($cookies{mark6_session} || '');

@@ -24,8 +24,9 @@ BEGIN {
 
 use Mark6::DataStore;
 use Mark6::Article;
+use Mark6::Root;
 
-my $ROOT = $ENV{MARK6_ROOT} || default_root();
+my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/config.json');
 my $store = Mark6::DataStore->new(root => $ROOT);
 my %in = parse_query();
 
