@@ -65,6 +65,28 @@ img {
   text-decoration: none;
 }
 
+.language-switch {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.language-switch a {
+  min-width: 32px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--accent-strong);
+  text-align: center;
+  text-decoration: none;
+}
+
+.language-switch a.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .site-main {
   width: min(960px, calc(100% - 32px));
   margin: 32px auto 48px;

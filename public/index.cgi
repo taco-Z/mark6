@@ -23,6 +23,7 @@ BEGIN {
 }
 
 use Mark6::DataStore;
+use Mark6::Article;
 
 my $ROOT = $ENV{MARK6_ROOT} || default_root();
 my $store = Mark6::DataStore->new(root => $ROOT);
@@ -30,16 +31,29 @@ my %in = parse_query();
 
 my $config = $store->read_json('dat', 'config.json') || {};
 my $home   = $store->read_json('dat', 'home.json') || {};
+my @supported_langs = Mark6::Article::supported_langs($config);
+my $current_lang = current_lang($config, \@supported_langs);
+my $route = parse_path_info(\@supported_langs);
 my $order  = $in{order} || 'index';
 
 my $site_title = value_at($config, 'site', 'title') || 'MARK6';
 my $content;
 my $page_title = $site_title;
 
-if ($order eq 'focus') {
+if ($route->{type} eq 'article') {
+    my $article = find_article_by_slug($route->{node}, $route->{slug});
+    if ($article) {
+        $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
+        $content = render_article_detail($article);
+    }
+    else {
+        $content = render_not_found();
+    }
+}
+elsif ($order eq 'focus') {
     my $article = find_article($in{tar} || '');
     if ($article) {
-        $page_title = ($article->{title} || 'Article') . " - $site_title";
+        $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
         $content = render_article_detail($article);
     }
     else {
@@ -56,7 +70,7 @@ else {
     $content = render_home($home, \@articles);
 }
 
-print encode('UTF-8', render_page($page_title, $site_title, $content));
+print encode('UTF-8', render_page($page_title, $site_title, $content, undef));
 
 sub parse_query {
     my $query = $ENV{QUERY_STRING} || '';
@@ -71,6 +85,30 @@ sub parse_query {
     }
 
     return %params;
+}
+
+sub parse_path_info {
+    my ($langs) = @_;
+    my $path = $ENV{PATH_INFO} || '';
+    my %supported = map { $_ => 1 } @{$langs};
+    my @parts = grep { $_ ne '' } split m{/+}, $path;
+
+    return { type => 'index' } unless @parts;
+    return { type => 'index', lang => $parts[0] } if @parts == 1 && $supported{$parts[0]};
+    return { type => 'article', lang => $parts[0], node => $parts[1], slug => $parts[2] }
+        if @parts >= 3 && $supported{$parts[0]};
+    return { type => 'index' };
+}
+
+sub current_lang {
+    my ($config, $langs) = @_;
+    my %supported = map { $_ => 1 } @{$langs};
+    my $path_lang = parse_path_info($langs)->{lang} || '';
+    my $query_lang = $in{lang} || '';
+    my $default = $config->{site}{default_lang} || $config->{site}{language} || $langs->[0] || 'ja';
+    return $path_lang if $supported{$path_lang};
+    return $query_lang if $supported{$query_lang};
+    return $supported{$default} ? $default : $langs->[0] || 'ja';
 }
 
 sub url_decode {
@@ -92,6 +130,7 @@ sub load_articles {
     for my $file (@files) {
         my $article = $store->read_json('dat', 'articles', $file);
         next unless $article && ($article->{status} || '') eq 'published';
+        Mark6::Article::normalize($article, $config);
         push @articles, $article;
     }
 
@@ -104,7 +143,21 @@ sub find_article {
 
     my $article = $store->read_json('dat', 'articles', "$id.json");
     return undef unless $article && ($article->{status} || '') eq 'published';
+    Mark6::Article::normalize($article, $config);
     return $article;
+}
+
+sub find_article_by_slug {
+    my ($node, $slug) = @_;
+    return undef unless safe_segment($node) && safe_segment($slug);
+
+    for my $article (load_articles()) {
+        next unless Mark6::Article::node_for($article, $config) eq $node;
+        next unless Mark6::Article::slug_for($article) eq $slug;
+        return $article;
+    }
+
+    return undef;
 }
 
 sub filter_by_tag {
@@ -154,18 +207,19 @@ HTML
 sub render_article_summary {
     my ($article) = @_;
     my $id = escape_attr($article->{id} || '');
-    my $title = escape_html($article->{title} || 'Untitled');
+    my $title = escape_html(Mark6::Article::title_for($article, $current_lang, $config));
     my $date = escape_html(format_date($article->{created_at} || ''));
-    my $intro = trusted_html($article->{intro} || '');
+    my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
     my $tags = render_tags($article->{tags} || []);
     my $image = render_image($article, 'summary-image');
+    my $href = escape_attr(Mark6::Article::public_path($article, $current_lang, $config));
 
     return <<"HTML";
 <article class="article-summary">
   $image
   <div class="summary-main">
     <div class="meta">$date</div>
-    <h3><a href="index.cgi?order=focus&amp;tar=$id">$title</a></h3>
+    <h3><a href="$href">$title</a></h3>
     <div class="intro">$intro</div>
     $tags
   </div>
@@ -175,12 +229,13 @@ HTML
 
 sub render_article_detail {
     my ($article) = @_;
-    my $title = escape_html($article->{title} || 'Untitled');
+    my $title = escape_html(Mark6::Article::title_for($article, $current_lang, $config));
     my $date = escape_html(format_date($article->{created_at} || ''));
-    my $intro = trusted_html($article->{intro} || '');
-    my $body = trusted_html($article->{body} || '');
+    my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
+    my $body = trusted_html(Mark6::Article::body_for($article, $current_lang, $config));
     my $tags = render_tags($article->{tags} || []);
     my $image = render_image($article, 'detail-image');
+    my $lang_links = render_language_links($article);
 
     $body = $intro if $body eq '';
 
@@ -188,6 +243,7 @@ sub render_article_detail {
 <article class="article-detail">
   <a class="back-link" href="index.cgi?order=article">Articles</a>
   <div class="meta">$date</div>
+  $lang_links
   <h1>$title</h1>
   $image
   <div class="body">$body</div>
@@ -215,8 +271,23 @@ sub render_image {
     return '' unless safe_image_path($image);
 
     my $src = escape_attr(image_src($image));
-    my $alt = escape_attr($article->{title} || '');
+    my $alt = escape_attr(Mark6::Article::title_for($article, $current_lang, $config));
     return qq|<img class="$class" src="$src" alt="$alt">|;
+}
+
+sub render_language_links {
+    my ($article) = @_;
+    my $links = join ' ', map {
+        my $lang = $_;
+        my $href = $article
+            ? Mark6::Article::public_path($article, $lang, $config)
+            : "/$lang/";
+        $href = escape_attr($href);
+        my $class = $lang eq $current_lang ? ' class="active"' : '';
+        qq|<a$class href="$href">$lang</a>|;
+    } @supported_langs;
+
+    return qq|<nav class="language-switch">$links</nav>|;
 }
 
 sub image_src {
@@ -229,6 +300,11 @@ sub safe_image_path {
     return 0 unless defined $value && $value ne '';
     return 0 if $value =~ /\.\./;
     return $value =~ /\A[0-9A-Za-z_.\/-]+\z/ ? 1 : 0;
+}
+
+sub safe_segment {
+    my ($value) = @_;
+    return defined $value && $value =~ /\A[0-9A-Za-z_-]+\z/ ? 1 : 0;
 }
 
 sub render_not_found {
@@ -245,12 +321,14 @@ sub render_page {
     my ($page_title, $site_title, $content) = @_;
     my $safe_page_title = escape_html($page_title);
     my $safe_site_title = escape_html($site_title);
+    my $language_links = render_language_links();
+    my $home_href = escape_attr("/$current_lang/");
 
     return <<"HTML";
 Content-Type: text/html; charset=UTF-8
 
 <!doctype html>
-<html lang="ja">
+<html lang="$current_lang">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -259,11 +337,12 @@ Content-Type: text/html; charset=UTF-8
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="index.cgi">$safe_site_title</a>
+    <a class="brand" href="$home_href">$safe_site_title</a>
     <nav class="site-nav">
-      <a href="index.cgi">Home</a>
+      <a href="$home_href">Home</a>
       <a href="index.cgi?order=article">Articles</a>
     </nav>
+    $language_links
   </header>
   <main class="site-main">
     $content

@@ -17,7 +17,7 @@ make_path(File::Spec->catdir($root, 'dat', 'sessions'));
 write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, users => [] });
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
-    site => { title => 'MARK6 Test', language => 'ja', base_url => '' },
+    site => { title => 'MARK6 Test', language => 'ja', default_lang => 'ja', langs => ['ja', 'en'], node => 'oita360', base_url => '' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
@@ -43,6 +43,8 @@ my $new_form = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($new_form, qr/New Article/, 'new article form renders');
+like($new_form, qr/name="title_ja"/, 'form renders Japanese title field');
+like($new_form, qr/name="title_en"/, 'form renders English title field');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
@@ -54,12 +56,18 @@ my $save = run_cgi(
         command    => 'save',
         id         => 'test-article',
         csrf_token => $csrf,
-        title      => 'テスト記事',
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => 'テスト記事',
+        title_en   => 'Test article',
         status     => 'published',
         tags       => 'News, Perl',
         image      => '',
-        intro      => '<p>紹介文</p>',
-        body       => '<p>本文</p>',
+        description_ja => '<p>紹介文</p>',
+        body_ja    => '<p>本文</p>',
+        description_en => '<p>Summary</p>',
+        body_en    => '<p>Body</p>',
     ),
 );
 like($save, qr/Location: articles\.cgi/, 'save redirects to article list');
@@ -71,6 +79,14 @@ my $list = run_cgi(
 );
 like($list, qr/テスト記事/, 'saved article appears in admin list');
 
+my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($saved_article->{default_lang}, 'ja', 'default language saved');
+is($saved_article->{node}, 'oita360', 'node saved');
+is($saved_article->{slug}, 'beppu-station', 'slug saved');
+is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
+is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
+is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default language');
+
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
     method => 'GET',
@@ -78,6 +94,14 @@ my $public = run_cgi(
 );
 like($public, qr/テスト記事/, 'saved article appears publicly');
 like($public, qr/本文/, 'public detail renders body');
+
+my $public_en = run_cgi(
+    script => File::Spec->catfile('public', 'index.cgi'),
+    method => 'GET',
+    path_info => '/en/oita360/beppu-station/',
+);
+like($public_en, qr/Test article/, 'pretty URL renders English article');
+like($public_en, qr/<p>Body<\/p>/, 'pretty URL renders English body');
 
 my $delete = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -106,6 +130,7 @@ sub run_cgi {
     local $ENV{MARK6_ROOT} = $root;
     local $ENV{REQUEST_METHOD} = $args{method} || 'GET';
     local $ENV{QUERY_STRING} = $args{query} || '';
+    local $ENV{PATH_INFO} = $args{path_info} || '';
     local $ENV{HTTP_COOKIE} = $args{cookie} || '';
     local $ENV{HTTPS} = '';
 
@@ -143,3 +168,11 @@ sub write_json {
     close $fh;
 }
 
+sub read_json {
+    my ($path) = @_;
+    open my $fh, '<:raw', $path or die "Cannot read $path: $!";
+    local $/;
+    my $body = <$fh>;
+    close $fh;
+    return JSON::PP->new->utf8->decode($body);
+}
