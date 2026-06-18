@@ -39,6 +39,12 @@ my $route = parse_route($request_path, \@supported_langs, $config);
 my $current_lang = current_lang($config, \@supported_langs, $route);
 my $order  = $in{order} || 'index';
 
+if (should_redirect_root($request_path, $route)) {
+    my $initial_lang = initial_lang(\@supported_langs);
+    redirect_to(lang_url($initial_lang));
+    exit;
+}
+
 my $site_title = value_at($config, 'site', 'title') || 'MARK6';
 my $content;
 my $page_title = $site_title;
@@ -96,17 +102,28 @@ sub parse_query {
 
 sub request_path {
     my $path = $ENV{PATH_INFO} || '';
-    $path = $in{path} || '' if $path eq '';
+    return normalize_path($in{path}) if $path eq '' && exists $in{path};
     if ($path eq '') {
         $path = $ENV{REQUEST_URI} || '';
         $path =~ s/\?.*\z//;
     }
 
+    return normalize_path($path);
+}
+
+sub normalize_path {
+    my ($path) = @_;
+    $path = '' unless defined $path;
     $path =~ s{\\}{/}g;
     $path =~ s{(?:^|/)public/index\.cgi(?:/|$)}{/}i;
     $path =~ s{/+}{/}g;
     $path =~ s{\A/+}{};
     $path =~ s{/+\z}{};
+    my $base = $site_base || '';
+    $base =~ s{\Ahttps?://[^/]+}{}i;
+    $base =~ s{\A/+}{};
+    $base =~ s{/+\z}{};
+    $path =~ s{\A\Q$base\E/?}{} if $base ne '';
     return $path;
 }
 
@@ -141,6 +158,45 @@ sub current_lang {
     return $path_lang if $supported{$path_lang};
     return $query_lang if $supported{$query_lang};
     return $supported{$default} ? $default : $langs->[0] || 'ja';
+}
+
+sub should_redirect_root {
+    my ($path, $route) = @_;
+    return 0 if ($ENV{REQUEST_METHOD} || 'GET') ne 'GET';
+    return 0 if $order ne 'index';
+    return 0 if defined $in{tag} || defined $in{tar};
+    return ($path || '') eq '' && ($route->{type} || '') eq 'index';
+}
+
+sub initial_lang {
+    my ($langs) = @_;
+    my %supported = map { $_ => 1 } @{$langs};
+    my %cookies = cookies();
+    return $cookies{mark6_lang} if $supported{$cookies{mark6_lang} || ''};
+
+    my $accept = lc($ENV{HTTP_ACCEPT_LANGUAGE} || '');
+    return 'ja' if $accept =~ /\A\s*ja(?:-|,|;|\z)/;
+    return 'ja' if $accept =~ /\A\s*ja-jp(?:,|;|\z)/;
+    return $supported{en} ? 'en' : ($langs->[0] || 'ja');
+}
+
+sub cookies {
+    my %cookies;
+    for my $pair (split /;\s*/, $ENV{HTTP_COOKIE} || '') {
+        my ($key, $value) = split /=/, $pair, 2;
+        next unless defined $key && $key ne '';
+        $cookies{$key} = url_decode($value || '');
+    }
+    return %cookies;
+}
+
+sub redirect_to {
+    my ($location) = @_;
+    print encode('UTF-8', <<"HTTP");
+Status: 302 Found
+Location: $location
+
+HTTP
 }
 
 sub url_decode {
@@ -358,9 +414,11 @@ sub render_page {
     my $home_href = escape_attr(lang_url($current_lang));
     my $articles_href = escape_attr(article_list_url());
     my $css_href = escape_attr(asset_url('css/mark6.css'));
+    my $lang_cookie = lang_cookie_header();
 
     return <<"HTML";
 Content-Type: text/html; charset=UTF-8
+$lang_cookie
 
 <!doctype html>
 <html lang="$current_lang">
@@ -391,6 +449,19 @@ HTML
 sub trusted_html {
     my ($html) = @_;
     return $html;
+}
+
+sub lang_cookie_header {
+    return '' unless grep { $_ eq $current_lang } @supported_langs;
+    my $path = cookie_path();
+    return "Set-Cookie: mark6_lang=$current_lang; Path=$path; Max-Age=31536000; SameSite=Lax\n";
+}
+
+sub cookie_path {
+    my $path = $site_base eq '' ? '/' : "$site_base/";
+    $path =~ s{\Ahttps?://[^/]+}{}i;
+    $path =~ s{/+}{/}g;
+    return $path;
 }
 
 sub site_base {

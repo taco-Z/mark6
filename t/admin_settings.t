@@ -91,6 +91,7 @@ is($config->{shop}{paypal_id}, 'seller@example.test', 'paypal id saved');
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
     method => 'GET',
+    path_info => '/en/',
 );
 like($public, qr/<title>After Site<\/title>/, 'public page uses updated site title');
 
@@ -102,6 +103,7 @@ sub run_cgi {
     local $ENV{MARK6_ROOT} = $root;
     local $ENV{REQUEST_METHOD} = $args{method} || 'GET';
     local $ENV{QUERY_STRING} = $args{query} || '';
+    local $ENV{PATH_INFO} = $args{path_info} || '';
     local $ENV{HTTP_COOKIE} = $args{cookie} || '';
     local $ENV{HTTPS} = '';
     local $ENV{CONTENT_TYPE} = $args{content_type} || 'application/x-www-form-urlencoded';
@@ -148,4 +150,3 @@ sub read_json {
     close $fh;
     return JSON::PP->new->utf8->decode($body);
 }
-

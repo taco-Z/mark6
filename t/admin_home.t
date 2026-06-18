@@ -77,6 +77,7 @@ ok($home->{updated_at}, 'updated_at saved');
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
     method => 'GET',
+    path_info => '/ja/',
 );
 like($public, qr/After Home/, 'public page shows updated home title');
 like($public, qr/After body/, 'public page shows updated home body');
@@ -89,6 +90,7 @@ sub run_cgi {
     local $ENV{MARK6_ROOT} = $root;
     local $ENV{REQUEST_METHOD} = $args{method} || 'GET';
     local $ENV{QUERY_STRING} = $args{query} || '';
+    local $ENV{PATH_INFO} = $args{path_info} || '';
     local $ENV{HTTP_COOKIE} = $args{cookie} || '';
     local $ENV{HTTPS} = '';
     local $ENV{CONTENT_TYPE} = $args{content_type} || 'application/x-www-form-urlencoded';
@@ -135,4 +137,3 @@ sub read_json {
     close $fh;
     return JSON::PP->new->utf8->decode($body);
 }
-

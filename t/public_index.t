@@ -63,7 +63,7 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
     created_at => '2013-08-02T13:56:45Z',
 });
 
-my $home = run_cgi('');
+my $home = run_cgi('', '/ja/');
 like($home, qr/Content-Type: text\/html; charset=UTF-8/, 'prints UTF-8 content type');
 like($home, qr/ようこそ/, 'renders home title');
 like($home, qr/別府駅/, 'renders default language article summary');
@@ -87,9 +87,21 @@ like($node_top, qr/class="article-list"/, 'renders node top article list');
 
 my $lang_top = run_cgi('', '/ja/');
 like($lang_top, qr/Home body/, 'renders language top');
+like($lang_top, qr/Set-Cookie: mark6_lang=ja; Path=\/test\/mark6\/; Max-Age=31536000; SameSite=Lax/, 'language page stores language cookie');
 
-my $root_top = run_cgi('', '/');
-like($root_top, qr/<html lang="ja">/, 'root uses default language top');
+my $root_top = run_cgi('', '/', '', 'en-US,en;q=0.9');
+like($root_top, qr/Status: 302 Found/, 'root redirects to initial language');
+like($root_top, qr/Location: \/test\/mark6\/en\//, 'root redirects to English from browser language');
+
+my $root_cookie = run_cgi('', '/', '', 'en-US,en;q=0.9', 'mark6_lang=ja');
+like($root_cookie, qr/Location: \/test\/mark6\/ja\//, 'root redirect prefers language cookie');
+
+my $root_ja = run_cgi('path=', '', '', 'ja-JP,ja;q=0.9,en;q=0.8');
+like($root_ja, qr/Location: \/test\/mark6\/ja\//, 'empty path query redirects to Japanese from browser language');
+
+my $request_uri_lang = run_cgi('', '', '/test/mark6/ja/');
+unlike($request_uri_lang, qr/Status: 302 Found/, 'language URL from REQUEST_URI is not redirected');
+like($request_uri_lang, qr/Home body/, 'language URL from REQUEST_URI renders normally');
 
 my $unsupported_lang = run_cgi('', '/fr/oita360/beppu-station/');
 like($unsupported_lang, qr/<html lang="ja">/, 'unsupported language falls back to default language');
@@ -104,10 +116,12 @@ remove_tree($root);
 done_testing;
 
 sub run_cgi {
-    my ($query, $path_info, $request_uri) = @_;
+    my ($query, $path_info, $request_uri, $accept_language, $cookie) = @_;
     local $ENV{QUERY_STRING} = $query;
     local $ENV{PATH_INFO} = $path_info || '';
     local $ENV{REQUEST_URI} = $request_uri || '';
+    local $ENV{HTTP_ACCEPT_LANGUAGE} = $accept_language || '';
+    local $ENV{HTTP_COOKIE} = $cookie || '';
     local $ENV{REQUEST_METHOD} = 'GET';
     local $ENV{MARK6_ROOT} = $root;
 
