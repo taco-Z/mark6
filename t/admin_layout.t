@@ -71,6 +71,7 @@ for my $case (
     like($page, qr/media\.cgi/, "$title nav links media");
     like($page, qr/settings\.cgi/, "$title nav links settings");
     like($page, qr/logout\.cgi/, "$title nav links logout");
+    like($page, qr/href="\.\.\/public\/index\.cgi" target="_blank" rel="noopener"/, "$title nav opens site view in a new tab");
 }
 
 remove_tree($root);

@@ -56,13 +56,21 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
     }
 
     if ($command eq 'save') {
-        save_article();
+        my $error = run_admin_action(sub { save_article() });
+        if ($error) {
+            render_page('Save Error', qq|<p class="error">$error</p>|);
+            exit;
+        }
         Mark6::CGI::redirect('articles.cgi');
         exit;
     }
 
     if ($command eq 'delete') {
-        delete_article($params{id} || '');
+        my $error = run_admin_action(sub { delete_article($params{id} || '') });
+        if ($error) {
+            render_page('Delete Error', qq|<p class="error">$error</p>|);
+            exit;
+        }
         Mark6::CGI::redirect('articles.cgi');
         exit;
     }
@@ -214,7 +222,8 @@ sub save_article {
         },
     };
 
-    $store->write_json($article, 'dat', 'articles', "$id.json");
+    my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
+    die "Article JSON was not created at $path" unless -e $path;
 }
 
 sub delete_article {
@@ -325,6 +334,19 @@ sub render_page {
         root    => $ROOT,
         content => $content,
     );
+}
+
+sub run_admin_action {
+    my ($code) = @_;
+    my $ok = eval {
+        $code->();
+        1;
+    };
+    return '' if $ok;
+
+    my $error = $@ || 'Unknown error';
+    chomp $error;
+    return Mark6::CGI::escape_html($error);
 }
 
 sub parse_tags {

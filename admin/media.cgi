@@ -56,12 +56,20 @@ if ($method eq 'POST') {
 
     my $command = $form{command}{value} || '';
     if ($command eq 'upload') {
-        upload_media($form{file});
+        my $error = run_admin_action(sub { upload_media($form{file}) });
+        if ($error) {
+            render_page('Upload Error', qq|<p class="error">$error</p>|);
+            exit;
+        }
         Mark6::CGI::redirect('media.cgi');
         exit;
     }
     if ($command eq 'delete') {
-        delete_media($form{id}{value} || '');
+        my $error = run_admin_action(sub { delete_media($form{id}{value} || '') });
+        if ($error) {
+            render_page('Delete Error', qq|<p class="error">$error</p>|);
+            exit;
+        }
         Mark6::CGI::redirect('media.cgi');
         exit;
     }
@@ -136,10 +144,15 @@ sub upload_media {
     my $relative = "img/uploads/$year/$month/$filename";
     my $absolute = "$ROOT/$relative";
 
-    make_path(dirname($absolute));
+    my $upload_dir = dirname($absolute);
+    make_path($upload_dir) unless -d $upload_dir;
+    die "Upload directory was not created: $upload_dir" unless -d $upload_dir;
+    die "Upload directory is not writable: $upload_dir" unless -w $upload_dir;
+
     open my $fh, '>:raw', $absolute or die "Cannot write $absolute: $!";
     print {$fh} $file->{content};
     close $fh;
+    die "Uploaded file was not created at $absolute" unless -e $absolute;
 
     my $item = {
         id                => $id,
@@ -153,7 +166,8 @@ sub upload_media {
         uploaded_by       => $user->{id},
     };
 
-    $store->write_json($item, 'dat', 'media', "$id.json");
+    my $path = $store->write_json($item, 'dat', 'media', "$id.json");
+    die "Media JSON was not created at $path" unless -e $path;
 }
 
 sub delete_media {
@@ -241,6 +255,19 @@ sub render_page {
         root    => $ROOT,
         content => $content,
     );
+}
+
+sub run_admin_action {
+    my ($code) = @_;
+    my $ok = eval {
+        $code->();
+        1;
+    };
+    return '' if $ok;
+
+    my $error = $@ || 'Unknown error';
+    chomp $error;
+    return Mark6::CGI::escape_html($error);
 }
 
 sub iso_now {

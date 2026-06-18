@@ -45,6 +45,8 @@ sub write_json {
     my $path = $self->path(@parts);
     my $dir = dirname($path);
     make_path($dir) unless -d $dir;
+    die "Directory was not created: $dir" unless -d $dir;
+    die "Directory is not writable: $dir" unless -w $dir;
 
     my $tmp = "$path.tmp.$$";
     open my $fh, '>:raw', $tmp or die "Cannot write $tmp: $!";
@@ -71,4 +73,3 @@ sub append_jsonl {
 }
 
 1;
-

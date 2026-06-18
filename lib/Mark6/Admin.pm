@@ -45,15 +45,16 @@ sub admin_nav {
         [articles  => 'admin.nav.articles',  'Articles',  'articles.cgi'],
         [media     => 'admin.nav.media',     'Media',     'media.cgi'],
         [settings  => 'admin.nav.settings',  'Settings',  'settings.cgi'],
-        [view      => 'admin.nav.view_site', 'View Site', '../public/index.cgi'],
+        [view      => 'admin.nav.view_site', 'View Site', '../public/index.cgi', ' target="_blank" rel="noopener"'],
         [logout    => 'admin.nav.logout',    'Logout',    'logout.cgi'],
     );
 
     my $links = join "\n", map {
-        my ($key, $label_key, $fallback, $href) = @{$_};
+        my ($key, $label_key, $fallback, $href, $attrs) = @{$_};
         my $label = Mark6::CGI::escape_html($lang->t($label_key, $fallback));
         my $class = $key eq $active ? ' class="active"' : '';
-        qq|      <a$class href="$href">$label</a>|;
+        $attrs ||= '';
+        qq|      <a$class href="$href"$attrs>$label</a>|;
     } @items;
 
     return <<"HTML";
