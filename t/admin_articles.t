@@ -17,7 +17,7 @@ make_path(File::Spec->catdir($root, 'dat', 'sessions'));
 write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, users => [] });
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
-    site => { title => 'MARK6 Test', language => 'ja', default_lang => 'ja', langs => ['ja', 'en'], node => 'oita360', base_url => '' },
+    site => { title => 'MARK6 Test', language => 'ja', default_lang => 'ja', langs => ['ja', 'en'], node => 'oita360', base_url => '/test/mark6' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
@@ -78,6 +78,7 @@ my $list = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($list, qr/テスト記事/, 'saved article appears in admin list');
+like($list, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/" target="_blank" rel="noopener"/, 'view link opens public article in new tab');
 
 my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is($saved_article->{default_lang}, 'ja', 'default language saved');
@@ -114,6 +115,7 @@ my $delete = run_cgi(
     ),
 );
 like($delete, qr/Location: articles\.cgi/, 'delete redirects to article list');
+ok(!-e File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'), 'delete removes article JSON');
 
 my $after_delete = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),

@@ -72,9 +72,10 @@ like($upload, qr/Location: media\.cgi/, 'upload redirects to media list');
 my @media_files = glob(File::Spec->catfile($root, 'dat', 'media', '*.json'));
 is(scalar @media_files, 1, 'media metadata written');
 my $media = read_json($media_files[0]);
+my $uploaded_path = File::Spec->catfile($root, split('/', $media->{path}));
 is($media->{original_filename}, 'sample.png', 'metadata keeps original filename');
 like($media->{path}, qr{\Aimg/uploads/\d{4}/\d{2}/}, 'metadata path is under img/uploads');
-ok(-e File::Spec->catfile($root, split('/', $media->{path})), 'uploaded image file written');
+ok(-e $uploaded_path, 'uploaded image file written');
 
 my $articles_form = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -128,8 +129,8 @@ my $delete = run_cgi(
 );
 like($delete, qr/Location: media\.cgi/, 'delete redirects to media list');
 
-my $deleted = read_json($media_files[0]);
-is($deleted->{status}, 'deleted', 'media delete marks metadata deleted');
+ok(!-e $media_files[0], 'media delete removes metadata JSON');
+ok(!-e $uploaded_path, 'media delete removes uploaded image file');
 
 remove_tree($root);
 done_testing;

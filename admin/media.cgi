@@ -175,9 +175,14 @@ sub delete_media {
     my ($id) = @_;
     return unless $id =~ /\A[0-9A-Za-z_-]+\z/;
     my $item = $store->read_json('dat', 'media', "$id.json") or return;
-    $item->{status} = 'deleted';
-    $item->{updated_at} = iso_now();
-    $store->write_json($item, 'dat', 'media', "$id.json");
+    my $image = $item->{path} || '';
+    if ($image ne '' && safe_stored_path($image)) {
+        my $absolute = "$ROOT/$image";
+        unlink $absolute or die "Cannot delete uploaded file $absolute: $!" if -e $absolute;
+    }
+
+    my $json = $store->path('dat', 'media', "$id.json");
+    unlink $json or die "Cannot delete media JSON $json: $!" if -e $json;
 }
 
 sub load_media {
@@ -246,6 +251,13 @@ sub sanitize_original_name {
     $name =~ s/[^0-9A-Za-z_.-]+/-/g;
     $name =~ s/\A-+|-+\z//g;
     return $name || 'image';
+}
+
+sub safe_stored_path {
+    my ($value) = @_;
+    return 0 unless defined $value && $value ne '';
+    return 0 if $value =~ /\.\./;
+    return $value =~ /\Aimg\/uploads\/[0-9A-Za-z_.\/-]+\z/ ? 1 : 0;
 }
 
 sub render_page {

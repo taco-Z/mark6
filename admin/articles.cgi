@@ -109,6 +109,7 @@ sub article_row {
     my $status = Mark6::CGI::escape_html($article->{status} || 'draft');
     my $date = Mark6::CGI::escape_html(format_date($article->{created_at} || ''));
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
+    my $view_url = Mark6::CGI::escape_html(public_article_url($article));
 
     return <<"HTML";
 <article class="admin-row">
@@ -117,7 +118,7 @@ sub article_row {
     <div class="meta">$status / $date / ID $id</div>
   </div>
   <div class="admin-actions">
-    <a href="@{[Mark6::CGI::escape_html(Mark6::Article::public_path($article, Mark6::Article::default_lang($article, $config), $config))]}">View</a>
+    <a href="$view_url" target="_blank" rel="noopener">View</a>
     <a href="articles.cgi?command=edit&amp;id=$id">Edit</a>
     <form method="post" action="articles.cgi">
       <input type="hidden" name="command" value="delete">
@@ -230,10 +231,8 @@ sub save_article {
 sub delete_article {
     my ($id) = @_;
     return unless $id =~ /\A[0-9A-Za-z_-]+\z/;
-    my $article = load_article($id) or return;
-    $article->{status} = 'deleted';
-    $article->{updated_at} = iso_now();
-    $store->write_json($article, 'dat', 'articles', "$id.json");
+    my $path = $store->path('dat', 'articles', "$id.json");
+    unlink $path or die "Cannot delete article JSON $path: $!" if -e $path;
 }
 
 sub load_articles {
@@ -348,6 +347,15 @@ sub run_admin_action {
     my $error = $@ || 'Unknown error';
     chomp $error;
     return Mark6::CGI::escape_html($error);
+}
+
+sub public_article_url {
+    my ($article) = @_;
+    my $lang = Mark6::Article::default_lang($article, $config);
+    my $path = Mark6::Article::public_path($article, $lang, $config);
+    my $base = $config->{site}{base_url} || '';
+    $base =~ s{/+\z}{};
+    return $base eq '' ? $path : $base . $path;
 }
 
 sub parse_tags {
