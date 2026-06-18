@@ -32,8 +32,9 @@ my %in = parse_query();
 my $config = $store->read_json('dat', 'config.json') || {};
 my $home   = $store->read_json('dat', 'home.json') || {};
 my @supported_langs = Mark6::Article::supported_langs($config);
-my $current_lang = current_lang($config, \@supported_langs);
-my $route = parse_path_info(\@supported_langs);
+my $request_path = request_path();
+my $route = parse_route($request_path, \@supported_langs, $config);
+my $current_lang = current_lang($config, \@supported_langs, $route);
 my $order  = $in{order} || 'index';
 
 my $site_title = value_at($config, 'site', 'title') || 'MARK6';
@@ -49,6 +50,10 @@ if ($route->{type} eq 'article') {
     else {
         $content = render_not_found();
     }
+}
+elsif ($route->{type} eq 'node') {
+    my @articles = grep { Mark6::Article::node_for($_, $config) eq $route->{node} } load_articles();
+    $content = render_article_list(\@articles, undef);
 }
 elsif ($order eq 'focus') {
     my $article = find_article($in{tar} || '');
@@ -87,23 +92,47 @@ sub parse_query {
     return %params;
 }
 
-sub parse_path_info {
-    my ($langs) = @_;
+sub request_path {
     my $path = $ENV{PATH_INFO} || '';
-    my %supported = map { $_ => 1 } @{$langs};
-    my @parts = grep { $_ ne '' } split m{/+}, $path;
+    if ($path eq '') {
+        $path = $ENV{REQUEST_URI} || '';
+        $path =~ s/\?.*\z//;
+    }
 
-    return { type => 'index' } unless @parts;
-    return { type => 'index', lang => $parts[0] } if @parts == 1 && $supported{$parts[0]};
-    return { type => 'article', lang => $parts[0], node => $parts[1], slug => $parts[2] }
-        if @parts >= 3 && $supported{$parts[0]};
-    return { type => 'index' };
+    $path =~ s{\\}{/}g;
+    $path =~ s{(?:^|/)public/index\.cgi(?:/|$)}{/}i;
+    $path =~ s{/+}{/}g;
+    $path =~ s{\A/+}{};
+    $path =~ s{/+\z}{};
+    return $path;
+}
+
+sub parse_route {
+    my ($path, $langs, $config) = @_;
+    my %supported = map { $_ => 1 } @{$langs};
+    my $default = $config->{site}{default_lang} || $config->{site}{language} || $langs->[0] || 'ja';
+    my @parts = grep { $_ ne '' } split m{/+}, $path || '';
+    @parts = map { url_decode($_) } @parts;
+
+    return { type => 'index', lang => $default } unless @parts;
+
+    my $lang = $default;
+    if ($supported{$parts[0]}) {
+        $lang = shift @parts;
+    }
+    elsif (@parts >= 2 && $parts[0] =~ /\A[a-z][a-z0-9_-]*\z/i) {
+        shift @parts;
+    }
+
+    return { type => 'index', lang => $lang } unless @parts;
+    return { type => 'node', lang => $lang, node => $parts[0] } if @parts == 1;
+    return { type => 'article', lang => $lang, node => $parts[0], slug => $parts[1] };
 }
 
 sub current_lang {
-    my ($config, $langs) = @_;
+    my ($config, $langs, $route) = @_;
     my %supported = map { $_ => 1 } @{$langs};
-    my $path_lang = parse_path_info($langs)->{lang} || '';
+    my $path_lang = $route->{lang} || '';
     my $query_lang = $in{lang} || '';
     my $default = $config->{site}{default_lang} || $config->{site}{language} || $langs->[0] || 'ja';
     return $path_lang if $supported{$path_lang};

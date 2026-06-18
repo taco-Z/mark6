@@ -77,6 +77,20 @@ like($detail, qr/href="\/en\/oita360\/beppu-station\/"/, 'detail links alternate
 
 my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
+my $request_uri_detail = run_cgi('', '', '/public/index.cgi/en/oita360/beppu-station/?x=1');
+like($request_uri_detail, qr/Beppu Station/, 'falls back to REQUEST_URI and strips public/index.cgi');
+
+my $node_top = run_cgi('', '/ja/oita360/');
+like($node_top, qr/class="article-list"/, 'renders node top article list');
+
+my $lang_top = run_cgi('', '/ja/');
+like($lang_top, qr/Home body/, 'renders language top');
+
+my $root_top = run_cgi('', '/');
+like($root_top, qr/<html lang="ja">/, 'root uses default language top');
+
+my $unsupported_lang = run_cgi('', '/fr/oita360/beppu-station/');
+like($unsupported_lang, qr/<html lang="ja">/, 'unsupported language falls back to default language');
 like($en_detail, qr/日本語本文です。/, 'falls back to default body when untranslated');
 
 my $list = run_cgi('order=article&tag=News');
@@ -87,9 +101,10 @@ remove_tree($root);
 done_testing;
 
 sub run_cgi {
-    my ($query, $path_info) = @_;
+    my ($query, $path_info, $request_uri) = @_;
     local $ENV{QUERY_STRING} = $query;
     local $ENV{PATH_INFO} = $path_info || '';
+    local $ENV{REQUEST_URI} = $request_uri || '';
     local $ENV{REQUEST_METHOD} = 'GET';
     local $ENV{MARK6_ROOT} = $root;
 
