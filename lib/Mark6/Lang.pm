@@ -2,6 +2,7 @@ package Mark6::Lang;
 
 use strict;
 use warnings;
+use utf8;
 use Mark6::DataStore;
 
 my %DEFAULT_JA = (
