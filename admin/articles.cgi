@@ -23,6 +23,7 @@ BEGIN {
 
 use Mark6::Auth;
 use Mark6::Admin;
+use Mark6::AI;
 use Mark6::Article;
 use Mark6::CGI qw();
 use Mark6::DataStore;
@@ -65,6 +66,20 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             exit;
         }
         Mark6::CGI::redirect('articles.cgi');
+        exit;
+    }
+
+    if ($command eq 'ai_suggest') {
+        my $article_id = '';
+        my $error = run_admin_action(sub {
+            $article_id = save_article();
+            suggest_article($article_id);
+        });
+        if ($error) {
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=done');
         exit;
     }
 
@@ -140,7 +155,7 @@ HTML
 }
 
 sub render_form {
-    my ($article, $heading) = @_;
+    my ($article, $heading, $error) = @_;
     Mark6::Article::normalize($article, $config);
     my $id = Mark6::CGI::escape_html($article->{id} || '');
     my $node = Mark6::CGI::escape_html($article->{node} || $config->{site}{node} || 'oita360');
@@ -150,6 +165,7 @@ sub render_form {
     my $default_lang = Mark6::CGI::escape_html(Mark6::Article::default_lang($article, $config));
     my $language_fields = language_fields($article);
     my $media_options = media_options($article->{image} || '');
+    my $ai_panel = ai_panel($article);
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $status = $article->{status} || 'draft';
     my $draft_selected = $status eq 'draft' ? 'selected' : '';
@@ -167,11 +183,15 @@ sub render_form {
     my $no_image_label = h($lang->t('admin.article.no_image', 'No image'));
     my $image_path_label = h($lang->t('admin.article.image_path', 'Image path'));
     my $save_label = h($lang->t('admin.common.save', 'Save'));
+    my $notice = ($params{ai} || '') eq 'done' ? '<p class="notice">' . h($lang->t('admin.ai.done', 'AI suggestions were generated.')) . '</p>' : '';
+    my $error_html = $error ? qq|<p class="error">$error</p>| : '';
 
     render_page($heading, <<"HTML");
 <section class="article-detail">
   <a class="back-link" href="articles.cgi">$articles_label</a>
   <h1>$safe_heading</h1>
+  $notice
+  $error_html
   <form class="admin-form" method="post" action="articles.cgi">
     <input type="hidden" name="command" value="save">
     <input type="hidden" name="id" value="$id">
@@ -198,6 +218,7 @@ sub render_form {
     </label>
     <label>$image_path_label<br><input name="image_manual" type="text" value="$image"></label>
     $language_fields
+    $ai_panel
     <button type="submit">$save_label</button>
   </form>
 </section>
@@ -247,6 +268,19 @@ sub save_article {
 
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
     die "Article JSON was not created at $path" unless -e $path;
+    return "$id";
+}
+
+sub suggest_article {
+    my ($id) = @_;
+    die $lang->t('admin.ai.disabled_error', 'AI assist is disabled.') unless $config->{features}{ai};
+
+    my $article = load_article($id) or die "Article not found";
+    Mark6::Article::normalize($article, $config);
+    my $assistant = Mark6::AI->new(config => $config);
+    $article->{ai} = $assistant->suggest_article(article => $article);
+    my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
+    die "Article JSON was not updated at $path" unless -e $path;
 }
 
 sub delete_article {
@@ -320,6 +354,37 @@ sub language_fields {
     </fieldset>
 HTML
     } @article_langs;
+}
+
+sub ai_panel {
+    my ($article) = @_;
+    return '' unless $config->{features}{ai};
+
+    my $ai = $article->{ai} || {};
+    my $summary = h($ai->{summary} || '');
+    my $seo = h($ai->{seo_description} || '');
+    my $tags = h(join(', ', @{$ai->{suggested_tags} || []}));
+    my $processed = h($ai->{last_processed_at} || '');
+    my $legend = h($lang->t('admin.ai.legend', 'AI assist'));
+    my $summary_label = h($lang->t('admin.ai.summary', 'Summary'));
+    my $seo_label = h($lang->t('admin.ai.seo_description', 'SEO description'));
+    my $tags_label = h($lang->t('admin.ai.suggested_tags', 'Suggested tags'));
+    my $processed_label = h($lang->t('admin.ai.last_processed_at', 'Last processed'));
+    my $button_label = h($lang->t('admin.ai.generate', 'Generate AI suggestions'));
+    my $help = h($lang->t('admin.ai.help', 'Save the article and generate summary, SEO description, and tag suggestions.'));
+    my $processed_html = $processed ne '' ? qq|<div class="meta">$processed_label: $processed</div>| : '';
+
+    return <<"HTML";
+    <fieldset>
+      <legend>$legend</legend>
+      <p class="meta">$help</p>
+      <label>$summary_label<br><textarea rows="3" readonly>$summary</textarea></label>
+      <label>$seo_label<br><textarea rows="3" readonly>$seo</textarea></label>
+      <label>$tags_label<br><input type="text" value="$tags" readonly onclick="this.select()"></label>
+      $processed_html
+      <button type="submit" name="command" value="ai_suggest">$button_label</button>
+    </fieldset>
+HTML
 }
 
 sub default_lang_options {

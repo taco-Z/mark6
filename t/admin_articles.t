@@ -19,6 +19,8 @@ write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, user
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
     site => { title => 'MARK6 Test', language => 'ja', default_lang => 'ja', langs => ['ja', 'en'], node => 'oita360', base_url => '/test/mark6' },
+    features => { ai => JSON::PP::true },
+    ai => { provider => 'openai', model => 'test-model', api_key_env => 'MARK6_OPENAI_API_KEY' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
@@ -89,6 +91,44 @@ is($saved_article->{slug}, 'beppu-station', 'slug saved');
 is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
 is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
 is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default language');
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
+        summary => 'AI summary',
+        seo_description => 'AI SEO description',
+        suggested_tags => ['Beppu', 'Station', 'Travel'],
+    });
+    my $ai = run_cgi(
+        script => File::Spec->catfile('admin', 'articles.cgi'),
+        method => 'POST',
+        cookie => "mark6_session=$session_id",
+        body   => form_data(
+            command    => 'ai_suggest',
+            id         => 'test-article',
+            csrf_token => $csrf,
+            default_lang => 'ja',
+            node       => 'oita360',
+            slug       => 'beppu-station',
+            title_ja   => $saved_article->{langs}{ja}{title},
+            title_en   => 'Test article',
+            status     => 'published',
+            tags       => 'News, Perl',
+            image      => '',
+            description_ja => $saved_article->{langs}{ja}{description},
+            body_ja    => $saved_article->{langs}{ja}{body},
+            description_en => '<p>Summary</p>',
+            body_en    => '<p>Body</p>',
+        ),
+    );
+    like($ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=done/, 'AI suggestion redirects to edit form');
+}
+
+my $ai_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($ai_article->{ai}{summary}, 'AI summary', 'AI summary saved');
+is($ai_article->{ai}{seo_description}, 'AI SEO description', 'AI SEO description saved');
+is_deeply($ai_article->{ai}{suggested_tags}, ['Beppu', 'Station', 'Travel'], 'AI suggested tags saved');
+is($ai_article->{ai}{model}, 'test-model', 'AI model saved');
+like($ai_article->{ai}{last_processed_at}, qr/\A\d{4}-\d{2}-\d{2}T/, 'AI timestamp saved');
 
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),

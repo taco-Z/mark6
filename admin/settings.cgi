@@ -76,6 +76,9 @@ sub render_settings {
     my $mini_articles = Mark6::CGI::escape_html($config->{display}{mini_articles} || 15);
     my $shop_title = Mark6::CGI::escape_html($config->{shop}{title} || 'Shop');
     my $paypal_id = Mark6::CGI::escape_html($config->{shop}{paypal_id} || '');
+    my $ai_provider = Mark6::CGI::escape_html($config->{ai}{provider} || 'openai');
+    my $ai_model = Mark6::CGI::escape_html($config->{ai}{model} || 'gpt-5.2');
+    my $ai_api_key_env = Mark6::CGI::escape_html($config->{ai}{api_key_env} || 'MARK6_OPENAI_API_KEY');
 
     my $tags_checked = checked($config->{features}{tags});
     my $newest_checked = checked($config->{features}{newest});
@@ -101,6 +104,11 @@ sub render_settings {
     my $ai_assist_label = h($lang->t('admin.settings.ai_assist', 'AI assist'));
     my $shop_title_label = h($lang->t('admin.settings.shop_title', 'Shop title'));
     my $paypal_id_label = h($lang->t('admin.settings.paypal_id', 'PayPal ID'));
+    my $ai_label = h($lang->t('admin.settings.ai', 'AI'));
+    my $ai_provider_label = h($lang->t('admin.settings.ai_provider', 'AI provider'));
+    my $ai_model_label = h($lang->t('admin.settings.ai_model', 'AI model'));
+    my $ai_api_key_env_label = h($lang->t('admin.settings.ai_api_key_env', 'API key environment variable'));
+    my $openai_label = h($lang->t('admin.settings.ai_provider_openai', 'OpenAI'));
     my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
     render_page($lang->t('admin.common.settings', 'Settings'), <<"HTML");
@@ -139,6 +147,16 @@ sub render_settings {
       <label>$shop_title_label<br><input name="shop_title" type="text" value="$shop_title"></label>
       <label>$paypal_id_label<br><input name="paypal_id" type="text" value="$paypal_id"></label>
     </fieldset>
+    <fieldset>
+      <legend>$ai_label</legend>
+      <label>$ai_provider_label<br>
+        <select name="ai_provider">
+          <option value="openai" selected>$openai_label</option>
+        </select>
+      </label>
+      <label>$ai_model_label<br><input name="ai_model" type="text" value="$ai_model"></label>
+      <label>$ai_api_key_env_label<br><input name="ai_api_key_env" type="text" value="$ai_api_key_env"></label>
+    </fieldset>
     <button type="submit">$save_label</button>
   </form>
 </section>
@@ -153,6 +171,7 @@ sub save_settings {
     $config->{features} ||= {};
     $config->{display} ||= {};
     $config->{shop} ||= {};
+    $config->{ai} ||= {};
 
     $config->{site}{title} = $params{site_title} || 'MARK6 Site';
     $config->{site}{base_url} = $params{base_url} || '';
@@ -169,6 +188,9 @@ sub save_settings {
 
     $config->{shop}{title} = $params{shop_title} || 'Shop';
     $config->{shop}{paypal_id} = $params{paypal_id} || '';
+    $config->{ai}{provider} = 'openai';
+    $config->{ai}{model} = clean_text($params{ai_model} || 'gpt-5.2');
+    $config->{ai}{api_key_env} = clean_env_name($params{ai_api_key_env} || 'MARK6_OPENAI_API_KEY');
 
     $store->write_json($config, 'dat', 'config.json');
 }
@@ -180,6 +202,7 @@ sub load_config {
         features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, shop => JSON::PP::false, ai => JSON::PP::false },
         display => { articles_per_page => 20, mini_articles => 15 },
         shop => { title => 'Shop', paypal_id => '' },
+        ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY' },
     };
 }
 
@@ -199,6 +222,19 @@ sub bounded_number {
     return $min if $value < $min;
     return $max if $value > $max;
     return $value;
+}
+
+sub clean_text {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/^\s+|\s+$//g;
+    return $value;
+}
+
+sub clean_env_name {
+    my ($value) = @_;
+    $value = clean_text($value);
+    return $value =~ /\A[A-Za-z_][A-Za-z0-9_]*\z/ ? $value : 'MARK6_OPENAI_API_KEY';
 }
 
 sub render_page {

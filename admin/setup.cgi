@@ -127,6 +127,11 @@ sub initialize_site {
             title     => 'Shop',
             paypal_id => '',
         },
+        ai => {
+            provider    => 'openai',
+            model       => 'gpt-5.2',
+            api_key_env => 'MARK6_OPENAI_API_KEY',
+        },
     }, 'dat', 'config.json');
 
     $store->write_json({
