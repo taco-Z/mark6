@@ -13,7 +13,7 @@ sub new {
 
     return bless {
         provider    => $ai->{provider} || 'openai',
-        model       => $ai->{model} || $ENV{MARK6_OPENAI_MODEL} || 'gpt-5.2',
+        model       => $ai->{model} || _env_value('MARK6_OPENAI_MODEL') || 'gpt-5.2',
         api_key_env => $ai->{api_key_env} || 'MARK6_OPENAI_API_KEY',
     }, $class;
 }
@@ -33,7 +33,7 @@ sub _suggest_article_openai {
     my ($self, $article) = @_;
     die "Unsupported AI provider: $self->{provider}" unless $self->{provider} eq 'openai';
 
-    my $api_key = $ENV{$self->{api_key_env}} || '';
+    my $api_key = _env_value($self->{api_key_env});
     die "AI API key is not configured. Set $self->{api_key_env}." if $api_key eq '';
 
     my $payload = JSON::PP->new->utf8->canonical->encode({
@@ -113,6 +113,19 @@ sub _run_curl {
     my $error = do { local $/; <$err> };
     waitpid($pid, 0);
     return ($output || '', $error || '', $? >> 8);
+}
+
+sub _env_value {
+    my ($name) = @_;
+    return '' unless defined $name && $name ne '';
+
+    my $candidate = $name;
+    for (1 .. 6) {
+        return $ENV{$candidate} if defined $ENV{$candidate} && $ENV{$candidate} ne '';
+        $candidate = "REDIRECT_$candidate";
+    }
+
+    return '';
 }
 
 sub _response_text {
