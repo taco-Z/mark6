@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Path qw(make_path remove_tree);
 use File::Spec;
@@ -42,7 +43,7 @@ my $media_page = run_cgi(
     method => 'GET',
     cookie => "mark6_session=$session_id",
 );
-like($media_page, qr/Media/, 'media page renders');
+like($media_page, qr/メディア/, 'media page renders');
 my ($csrf) = $media_page =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'media form includes csrf token');
 
@@ -82,7 +83,7 @@ my $media_after_upload = run_cgi(
     method => 'GET',
     cookie => "mark6_session=$session_id",
 );
-like($media_after_upload, qr/onsubmit="return confirm\('Delete this media file\?'\);"/, 'media delete confirms before submit');
+like($media_after_upload, qr/onsubmit="return confirm\('このメディアファイルを削除しますか？'\);"/, 'media delete confirms before submit');
 
 my $articles_form = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),

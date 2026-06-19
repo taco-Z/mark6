@@ -26,12 +26,14 @@ use Mark6::Admin;
 use Mark6::Article;
 use Mark6::CGI qw();
 use Mark6::DataStore;
+use Mark6::Lang;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
 my $store = Mark6::DataStore->new(root => $ROOT);
 my $config = $store->read_json('dat', 'config.json') || {};
+my $lang = Mark6::Lang->new(root => $ROOT);
 my @article_langs = Mark6::Article::supported_langs($config);
 my %params = Mark6::CGI::request_params();
 my %cookies = Mark6::CGI::cookies();
@@ -52,14 +54,14 @@ my $command = $params{command} || 'list';
 
 if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
     unless ($auth->verify_csrf($session, $params{csrf_token} || '')) {
-        render_page('CSRF Error', '<p class="error">Invalid form token.</p>');
+        render_page($lang->t('admin.common.csrf_error', 'CSRF Error'), '<p class="error">' . h($lang->t('admin.common.invalid_form_token', 'Invalid form token.')) . '</p>');
         exit;
     }
 
     if ($command eq 'save') {
         my $error = run_admin_action(sub { save_article() });
         if ($error) {
-            render_page('Save Error', qq|<p class="error">$error</p>|);
+            render_page($lang->t('admin.article.save_error', 'Save Error'), qq|<p class="error">$error</p>|);
             exit;
         }
         Mark6::CGI::redirect('articles.cgi');
@@ -69,7 +71,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
     if ($command eq 'delete') {
         my $error = run_admin_action(sub { delete_article($params{id} || '') });
         if ($error) {
-            render_page('Delete Error', qq|<p class="error">$error</p>|);
+            render_page($lang->t('admin.article.delete_error', 'Delete Error'), qq|<p class="error">$error</p>|);
             exit;
         }
         Mark6::CGI::redirect('articles.cgi');
@@ -78,11 +80,11 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
 }
 
 if ($command eq 'new') {
-    render_form(blank_article(), 'New Article');
+    render_form(blank_article(), $lang->t('admin.article.new', 'New Article'));
 }
 elsif ($command eq 'edit') {
     my $article = load_article($params{id} || '');
-    $article ? render_form($article, 'Edit Article') : render_page('Not Found', '<p class="error">Article not found.</p>');
+    $article ? render_form($article, $lang->t('admin.article.edit', 'Edit Article')) : render_page($lang->t('admin.common.not_found', 'Not Found'), '<p class="error">' . h($lang->t('admin.article.not_found', 'Article not found.')) . '</p>');
 }
 else {
     render_list();
@@ -90,12 +92,14 @@ else {
 
 sub render_list {
     my @articles = grep { ($_->{status} || '') ne 'deleted' } load_articles();
-    my $rows = @articles ? join("\n", map { article_row($_) } @articles) : '<p class="empty">No articles yet.</p>';
+    my $rows = @articles ? join("\n", map { article_row($_) } @articles) : '<p class="empty">' . h($lang->t('admin.article.empty', 'No articles yet.')) . '</p>';
+    my $page_title = h($lang->t('admin.article.title', 'Articles'));
+    my $new_label = h($lang->t('admin.article.new', 'New Article'));
 
-    render_page('Articles', <<"HTML");
+    render_page($lang->t('admin.article.title', 'Articles'), <<"HTML");
 <section class="article-detail">
-  <div class="admin-toolbar"><a class="button" href="articles.cgi?command=new">New Article</a></div>
-  <h1>Articles</h1>
+  <div class="admin-toolbar"><a class="button" href="articles.cgi?command=new">$new_label</a></div>
+  <h1>$page_title</h1>
   <div class="admin-list">$rows</div>
 </section>
 HTML
@@ -110,6 +114,10 @@ sub article_row {
     my $date = Mark6::CGI::escape_html(format_date($article->{created_at} || ''));
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $view_url = Mark6::CGI::escape_html(public_article_url($article));
+    my $view_label = h($lang->t('admin.common.view', 'View'));
+    my $edit_label = h($lang->t('admin.common.edit', 'Edit'));
+    my $delete_label = h($lang->t('admin.common.delete', 'Delete'));
+    my $confirm_delete = js_string($lang->t('admin.article.confirm_delete', 'Delete this article?'));
 
     return <<"HTML";
 <article class="admin-row">
@@ -118,13 +126,13 @@ sub article_row {
     <div class="meta">$status / $date / ID $id</div>
   </div>
   <div class="admin-actions">
-    <a href="$view_url" target="_blank" rel="noopener">View</a>
-    <a href="articles.cgi?command=edit&amp;id=$id">Edit</a>
-    <form method="post" action="articles.cgi" onsubmit="return confirm('Delete this article?');">
+    <a href="$view_url" target="_blank" rel="noopener">$view_label</a>
+    <a href="articles.cgi?command=edit&amp;id=$id">$edit_label</a>
+    <form method="post" action="articles.cgi" onsubmit="return confirm('$confirm_delete');">
       <input type="hidden" name="command" value="delete">
       <input type="hidden" name="id" value="$id">
       <input type="hidden" name="csrf_token" value="$csrf">
-      <button type="submit">Delete</button>
+      <button type="submit">$delete_label</button>
     </form>
   </div>
 </article>
@@ -146,38 +154,51 @@ sub render_form {
     my $status = $article->{status} || 'draft';
     my $draft_selected = $status eq 'draft' ? 'selected' : '';
     my $published_selected = $status eq 'published' ? 'selected' : '';
+    my $safe_heading = h($heading);
+    my $articles_label = h($lang->t('admin.article.title', 'Articles'));
+    my $default_lang_label = h($lang->t('admin.article.default_lang', 'Default language'));
+    my $node_label = h($lang->t('admin.article.node', 'Section'));
+    my $slug_label = h($lang->t('admin.article.slug', 'URL slug'));
+    my $status_label = h($lang->t('admin.article.status', 'Status'));
+    my $draft_label = h($lang->t('admin.article.status_draft', 'Draft'));
+    my $published_label = h($lang->t('admin.article.status_published', 'Published'));
+    my $tags_label = h($lang->t('admin.article.tags', 'Tags'));
+    my $main_image_label = h($lang->t('admin.article.main_image', 'Main image'));
+    my $no_image_label = h($lang->t('admin.article.no_image', 'No image'));
+    my $image_path_label = h($lang->t('admin.article.image_path', 'Image path'));
+    my $save_label = h($lang->t('admin.common.save', 'Save'));
 
     render_page($heading, <<"HTML");
 <section class="article-detail">
-  <a class="back-link" href="articles.cgi">Articles</a>
-  <h1>$heading</h1>
+  <a class="back-link" href="articles.cgi">$articles_label</a>
+  <h1>$safe_heading</h1>
   <form class="admin-form" method="post" action="articles.cgi">
     <input type="hidden" name="command" value="save">
     <input type="hidden" name="id" value="$id">
     <input type="hidden" name="csrf_token" value="$csrf">
-    <label>Default language<br>
+    <label>$default_lang_label<br>
       <select name="default_lang">
         @{[default_lang_options($article)]}
       </select>
     </label>
-    <label>Node<br><input name="node" type="text" value="$node" required></label>
-    <label>Slug<br><input name="slug" type="text" value="$slug" placeholder="beppu-station"></label>
-    <label>Status<br>
+    <label>$node_label<br><input name="node" type="text" value="$node" required></label>
+    <label>$slug_label<br><input name="slug" type="text" value="$slug" placeholder="beppu-station"></label>
+    <label>$status_label<br>
       <select name="status">
-        <option value="draft" $draft_selected>Draft</option>
-        <option value="published" $published_selected>Published</option>
+        <option value="draft" $draft_selected>$draft_label</option>
+        <option value="published" $published_selected>$published_label</option>
       </select>
     </label>
-    <label>Tags<br><input name="tags" type="text" value="$tags"></label>
-    <label>Main image<br>
+    <label>$tags_label<br><input name="tags" type="text" value="$tags"></label>
+    <label>$main_image_label<br>
       <select name="image">
-        <option value="">No image</option>
+        <option value="">$no_image_label</option>
         $media_options
       </select>
     </label>
-    <label>Image path<br><input name="image_manual" type="text" value="$image"></label>
+    <label>$image_path_label<br><input name="image_manual" type="text" value="$image"></label>
     $language_fields
-    <button type="submit">Save</button>
+    <button type="submit">$save_label</button>
   </form>
 </section>
 HTML
@@ -280,19 +301,22 @@ sub blank_article {
 sub language_fields {
     my ($article) = @_;
     return join "\n", map {
-        my $lang = $_;
-        my $entry = $article->{langs}{$lang} || {};
-        my $label = uc $lang;
+        my $lang_code = $_;
+        my $entry = $article->{langs}{$lang_code} || {};
+        my $label = uc $lang_code;
         my $title = Mark6::CGI::escape_html($entry->{title} || '');
         my $description = Mark6::CGI::escape_html($entry->{description} || '');
         my $body = Mark6::CGI::escape_html($entry->{body} || '');
+        my $title_label = h($lang->t('admin.article.field_title', 'Title'));
+        my $description_label = h($lang->t('admin.article.field_description_html', 'Description HTML'));
+        my $body_label = h($lang->t('admin.article.field_body_html', 'Body HTML'));
 
         <<"HTML";
     <fieldset>
       <legend>$label</legend>
-      <label>Title<br><input name="title_$lang" type="text" value="$title"></label>
-      <label>Description HTML<br><textarea name="description_$lang" rows="5">$description</textarea></label>
-      <label>Body HTML<br><textarea name="body_$lang" rows="12">$body</textarea></label>
+      <label>$title_label<br><input name="title_$lang_code" type="text" value="$title"></label>
+      <label>$description_label<br><textarea name="description_$lang_code" rows="5">$description</textarea></label>
+      <label>$body_label<br><textarea name="body_$lang_code" rows="12">$body</textarea></label>
     </fieldset>
 HTML
     } @article_langs;
@@ -332,8 +356,22 @@ sub render_page {
         title   => $title,
         active  => 'articles',
         root    => $ROOT,
+        lang    => $lang,
         content => $content,
     );
+}
+
+sub h {
+    return Mark6::CGI::escape_html($_[0] || '');
+}
+
+sub js_string {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/\\/\\\\/g;
+    $value =~ s/'/\\'/g;
+    $value =~ s/\r?\n/ /g;
+    return Mark6::CGI::escape_html($value);
 }
 
 sub run_admin_action {

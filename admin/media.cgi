@@ -27,11 +27,13 @@ use Mark6::Auth;
 use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::DataStore;
+use Mark6::Lang;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
 my $store = Mark6::DataStore->new(root => $ROOT);
+my $lang = Mark6::Lang->new(root => $ROOT);
 my %cookies = Mark6::CGI::cookies();
 my $session = $auth->read_session($cookies{mark6_session} || '');
 
@@ -51,7 +53,7 @@ my $method = $ENV{REQUEST_METHOD} || 'GET';
 if ($method eq 'POST') {
     my %form = read_multipart_form();
     unless ($auth->verify_csrf($session, $form{csrf_token}{value} || '')) {
-        render_page('CSRF Error', '<p class="error">Invalid form token.</p>');
+        render_page($lang->t('admin.common.csrf_error', 'CSRF Error'), '<p class="error">' . h($lang->t('admin.common.invalid_form_token', 'Invalid form token.')) . '</p>');
         exit;
     }
 
@@ -59,7 +61,7 @@ if ($method eq 'POST') {
     if ($command eq 'upload') {
         my $error = run_admin_action(sub { upload_media($form{file}) });
         if ($error) {
-            render_page('Upload Error', qq|<p class="error">$error</p>|);
+            render_page($lang->t('admin.media.upload_error', 'Upload Error'), qq|<p class="error">$error</p>|);
             exit;
         }
         Mark6::CGI::redirect('media.cgi');
@@ -68,7 +70,7 @@ if ($method eq 'POST') {
     if ($command eq 'delete') {
         my $error = run_admin_action(sub { delete_media($form{id}{value} || '') });
         if ($error) {
-            render_page('Delete Error', qq|<p class="error">$error</p>|);
+            render_page($lang->t('admin.media.delete_error', 'Delete Error'), qq|<p class="error">$error</p>|);
             exit;
         }
         Mark6::CGI::redirect('media.cgi');
@@ -81,17 +83,21 @@ render_list();
 sub render_list {
     my @media = load_media();
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
-    my $items = @media ? join("\n", map { media_card($_) } @media) : '<p class="empty">No media yet.</p>';
+    my $items = @media ? join("\n", map { media_card($_) } @media) : '<p class="empty">' . h($lang->t('admin.media.empty', 'No media yet.')) . '</p>';
+    my $page_title = h($lang->t('admin.common.media', 'Media'));
+    my $dashboard_label = h($lang->t('admin.common.dashboard', 'Dashboard'));
+    my $image_file_label = h($lang->t('admin.media.image_file', 'Image file'));
+    my $upload_label = h($lang->t('admin.common.upload', 'Upload'));
 
-    render_page('Media', <<"HTML");
+    render_page($lang->t('admin.common.media', 'Media'), <<"HTML");
 <section class="article-detail">
-  <a class="back-link" href="index.cgi">Dashboard</a>
-  <h1>Media</h1>
+  <a class="back-link" href="index.cgi">$dashboard_label</a>
+  <h1>$page_title</h1>
   <form class="media-upload" method="post" action="media.cgi" enctype="multipart/form-data">
     <input type="hidden" name="command" value="upload">
     <input type="hidden" name="csrf_token" value="$csrf">
-    <label>Image file<br><input name="file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required></label>
-    <button type="submit">Upload</button>
+    <label>$image_file_label<br><input name="file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required></label>
+    <button type="submit">$upload_label</button>
   </form>
   <div class="media-grid">$items</div>
 </section>
@@ -107,20 +113,25 @@ sub media_card {
     my $size = Mark6::CGI::escape_html($item->{size} || 0);
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $img_tag = Mark6::CGI::escape_html(qq|<img src="../$path" alt="">|);
+    my $path_label = h($lang->t('admin.media.path', 'Path'));
+    my $html_label = h($lang->t('admin.media.html', 'HTML'));
+    my $bytes_label = h($lang->t('admin.media.bytes', 'bytes'));
+    my $delete_label = h($lang->t('admin.common.delete', 'Delete'));
+    my $confirm_delete = js_string($lang->t('admin.media.confirm_delete', 'Delete this media file?'));
 
     return <<"HTML";
 <article class="media-card">
   <img src="$url" alt="$name">
   <div class="media-card-body">
     <strong>$name</strong>
-    <div class="meta">$size bytes</div>
-    <label>Path<input type="text" value="$path" readonly onclick="this.select()"></label>
-    <label>HTML<input type="text" value="$img_tag" readonly onclick="this.select()"></label>
-    <form method="post" action="media.cgi" enctype="multipart/form-data" onsubmit="return confirm('Delete this media file?');">
+    <div class="meta">$size $bytes_label</div>
+    <label>$path_label<input type="text" value="$path" readonly onclick="this.select()"></label>
+    <label>$html_label<input type="text" value="$img_tag" readonly onclick="this.select()"></label>
+    <form method="post" action="media.cgi" enctype="multipart/form-data" onsubmit="return confirm('$confirm_delete');">
       <input type="hidden" name="command" value="delete">
       <input type="hidden" name="id" value="$id">
       <input type="hidden" name="csrf_token" value="$csrf">
-      <button type="submit">Delete</button>
+      <button type="submit">$delete_label</button>
     </form>
   </div>
 </article>
@@ -266,8 +277,22 @@ sub render_page {
         title   => $title,
         active  => 'media',
         root    => $ROOT,
+        lang    => $lang,
         content => $content,
     );
+}
+
+sub h {
+    return Mark6::CGI::escape_html($_[0] || '');
+}
+
+sub js_string {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/\\/\\\\/g;
+    $value =~ s/'/\\'/g;
+    $value =~ s/\r?\n/ /g;
+    return Mark6::CGI::escape_html($value);
 }
 
 sub run_admin_action {

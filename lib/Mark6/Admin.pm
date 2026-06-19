@@ -13,11 +13,12 @@ sub render_page {
     my $lang = $args{lang} || Mark6::Lang->new(root => $args{root} || '.');
     my $safe_title = Mark6::CGI::escape_html($title);
     my $admin_title = Mark6::CGI::escape_html($lang->t('admin.title', 'Admin'));
+    my $html_lang = Mark6::CGI::escape_html($lang->code);
     my $nav = admin_nav($active, $lang);
 
     Mark6::CGI::print_html(<<"HTML");
 <!doctype html>
-<html lang="ja">
+<html lang="$html_lang">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

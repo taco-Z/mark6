@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Path qw(make_path remove_tree);
 use File::Spec;
@@ -50,7 +51,7 @@ my $settings = run_cgi(
     method => 'GET',
     cookie => "mark6_session=$session_id",
 );
-like($settings, qr/Settings/, 'settings form renders');
+like($settings, qr/設定/, 'settings form renders');
 like($settings, qr/Before Site/, 'settings form includes current site title');
 my ($csrf) = $settings =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'settings form includes csrf token');

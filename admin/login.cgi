@@ -23,10 +23,12 @@ BEGIN {
 
 use Mark6::Auth;
 use Mark6::CGI qw();
+use Mark6::Lang;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
+my $lang = Mark6::Lang->new(root => $ROOT);
 my %params = Mark6::CGI::request_params();
 my $method = $ENV{REQUEST_METHOD} || 'GET';
 
@@ -51,7 +53,7 @@ if ($method eq 'POST') {
         exit;
     }
 
-    render_login('Login failed.');
+    render_login($lang->t('admin.login.failed', 'Login failed.'));
     exit;
 }
 
@@ -65,27 +67,32 @@ sub has_users {
 sub render_login {
     my ($message) = @_;
     my $message_html = $message ? '<p class="error">' . Mark6::CGI::escape_html($message) . '</p>' : '';
+    my $html_lang = h($lang->code);
+    my $page_title = h($lang->t('admin.login.title', 'MARK6 Login'));
+    my $user_id_label = h($lang->t('admin.login.user_id', 'User ID'));
+    my $password_label = h($lang->t('admin.login.password', 'Password'));
+    my $submit_label = h($lang->t('admin.login.submit', 'Login'));
 
     Mark6::CGI::print_html(<<"HTML");
 <!doctype html>
-<html lang="ja">
+<html lang="$html_lang">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MARK6 Login</title>
+  <title>$page_title</title>
   <link rel="stylesheet" href="../public/assets/css/mark6.css">
 </head>
 <body>
   <main class="site-main admin-login">
     <section class="article-detail">
-      <h1>MARK6 Login</h1>
+      <h1>$page_title</h1>
       $message_html
       <form method="post" action="login.cgi">
-        <label>User ID<br><input name="name" type="text" autocomplete="username" required></label>
+        <label>$user_id_label<br><input name="name" type="text" autocomplete="username" required></label>
         <br><br>
-        <label>Password<br><input name="password" type="password" autocomplete="current-password" required></label>
+        <label>$password_label<br><input name="password" type="password" autocomplete="current-password" required></label>
         <br><br>
-        <button type="submit">Login</button>
+        <button type="submit">$submit_label</button>
       </form>
     </section>
   </main>
@@ -96,6 +103,10 @@ HTML
 
 sub secure_cookie {
     return ($ENV{HTTPS} || '') eq 'on' || ($ENV{MARK6_SECURE_COOKIE} || '') eq '1';
+}
+
+sub h {
+    return Mark6::CGI::escape_html($_[0] || '');
 }
 
 sub default_root {

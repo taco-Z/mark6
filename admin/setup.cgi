@@ -2,6 +2,7 @@
 
 use strict;
 use warnings;
+use utf8;
 use Cwd qw(abs_path getcwd);
 use File::Basename qw(dirname);
 use File::Path qw(make_path);
@@ -26,6 +27,7 @@ BEGIN {
 use Mark6::Auth;
 use Mark6::CGI qw();
 use Mark6::DataStore;
+use Mark6::Lang;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0);
@@ -73,13 +75,14 @@ sub has_users {
 }
 
 sub validate_setup {
+    my $ui = setup_lang();
     my @errors;
-    push @errors, 'Site title is required.' unless ($params{site_title} || '') ne '';
-    push @errors, 'User ID is required.' unless ($params{name} || '') ne '';
-    push @errors, 'Password is required.' unless ($params{password} || '') ne '';
-    push @errors, 'Password confirmation does not match.' unless ($params{password} || '') eq ($params{password_confirm} || '');
-    push @errors, 'Password must be at least 8 characters.' if length($params{password} || '') < 8;
-    push @errors, 'Language must be ja or en.' unless ($params{language} || 'ja') =~ /\A(?:ja|en)\z/;
+    push @errors, $ui->t('admin.setup.error_site_title', 'Site title is required.') unless ($params{site_title} || '') ne '';
+    push @errors, $ui->t('admin.setup.error_user_id', 'User ID is required.') unless ($params{name} || '') ne '';
+    push @errors, $ui->t('admin.setup.error_password', 'Password is required.') unless ($params{password} || '') ne '';
+    push @errors, $ui->t('admin.setup.error_password_confirm', 'Password confirmation does not match.') unless ($params{password} || '') eq ($params{password_confirm} || '');
+    push @errors, $ui->t('admin.setup.error_password_length', 'Password must be at least 8 characters.') if length($params{password} || '') < 8;
+    push @errors, $ui->t('admin.setup.error_language', 'Language must be ja or en.') unless ($params{language} || 'ja') =~ /\A(?:ja|en)\z/;
     return @errors;
 }
 
@@ -149,33 +152,44 @@ sub render_setup {
     my $language = $params{language} || 'ja';
     my $ja_selected = $language eq 'ja' ? 'selected' : '';
     my $en_selected = $language eq 'en' ? 'selected' : '';
+    my $ui = setup_lang();
+    my $html_lang = h($ui->code);
+    my $page_title = h($ui->t('admin.setup.title', 'MARK6 Setup'));
+    my $site_title_label = h($ui->t('admin.setup.site_title', 'Site title'));
+    my $language_label = h($ui->t('admin.setup.language', 'Language'));
+    my $ja_label = h($ui->t('admin.lang.ja', 'Japanese'));
+    my $en_label = h($ui->t('admin.lang.en', 'English'));
+    my $user_id_label = h($ui->t('admin.setup.user_id', 'Admin user ID'));
+    my $password_label = h($ui->t('admin.setup.password', 'Password'));
+    my $password_confirm_label = h($ui->t('admin.setup.password_confirm', 'Password confirmation'));
+    my $submit_label = h($ui->t('admin.setup.submit', 'Start MARK6'));
 
     Mark6::CGI::print_html(<<"HTML");
 <!doctype html>
-<html lang="ja">
+<html lang="$html_lang">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MARK6 Setup</title>
+  <title>$page_title</title>
   <link rel="stylesheet" href="../public/assets/css/mark6.css">
 </head>
 <body>
   <main class="site-main admin-login">
     <section class="article-detail">
-      <h1>MARK6 Setup</h1>
+      <h1>$page_title</h1>
       $error_html
       <form class="admin-form" method="post" action="setup.cgi">
-        <label>Site title<br><input name="site_title" type="text" value="$site_title" required></label>
-        <label>Language<br>
+        <label>$site_title_label<br><input name="site_title" type="text" value="$site_title" required></label>
+        <label>$language_label<br>
           <select name="language">
-            <option value="ja" $ja_selected>Japanese</option>
-            <option value="en" $en_selected>English</option>
+            <option value="ja" $ja_selected>$ja_label</option>
+            <option value="en" $en_selected>$en_label</option>
           </select>
         </label>
-        <label>Admin user ID<br><input name="name" type="text" value="$name" autocomplete="username" required></label>
-        <label>Password<br><input name="password" type="password" autocomplete="new-password" required></label>
-        <label>Password confirmation<br><input name="password_confirm" type="password" autocomplete="new-password" required></label>
-        <button type="submit">Start MARK6</button>
+        <label>$user_id_label<br><input name="name" type="text" value="$name" autocomplete="username" required></label>
+        <label>$password_label<br><input name="password" type="password" autocomplete="new-password" required></label>
+        <label>$password_confirm_label<br><input name="password_confirm" type="password" autocomplete="new-password" required></label>
+        <button type="submit">$submit_label</button>
       </form>
     </section>
   </main>
@@ -186,6 +200,15 @@ HTML
 
 sub secure_cookie {
     return ($ENV{HTTPS} || '') eq 'on' || ($ENV{MARK6_SECURE_COOKIE} || '') eq '1';
+}
+
+sub setup_lang {
+    my $code = ($params{language} || 'ja') eq 'en' ? 'en' : 'ja';
+    return Mark6::Lang->new(root => $ROOT, code => $code);
+}
+
+sub h {
+    return Mark6::CGI::escape_html($_[0] || '');
 }
 
 sub iso_now {

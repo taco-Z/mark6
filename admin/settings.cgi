@@ -26,11 +26,13 @@ use Mark6::Auth;
 use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::DataStore;
+use Mark6::Lang;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
 my $store = Mark6::DataStore->new(root => $ROOT);
+my $lang = Mark6::Lang->new(root => $ROOT);
 my %params = Mark6::CGI::request_params();
 my %cookies = Mark6::CGI::cookies();
 my $session = $auth->read_session($cookies{mark6_session} || '');
@@ -48,7 +50,7 @@ unless ($user) {
 
 if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
     unless ($auth->verify_csrf($session, $params{csrf_token} || '')) {
-        render_page('CSRF Error', '<p class="error">Invalid form token.</p>');
+        render_page($lang->t('admin.common.csrf_error', 'CSRF Error'), '<p class="error">' . h($lang->t('admin.common.invalid_form_token', 'Invalid form token.')) . '</p>');
         exit;
     }
 
@@ -62,7 +64,7 @@ render_settings();
 sub render_settings {
     my $config = load_config();
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
-    my $saved = ($params{saved} || '') eq '1' ? '<p class="notice">Settings saved.</p>' : '';
+    my $saved = ($params{saved} || '') eq '1' ? '<p class="notice">' . h($lang->t('admin.settings.saved', 'Settings saved.')) . '</p>' : '';
 
     my $site_title = Mark6::CGI::escape_html($config->{site}{title} || '');
     my $base_url = Mark6::CGI::escape_html($config->{site}{base_url} || '');
@@ -80,44 +82,64 @@ sub render_settings {
     my $popular_checked = checked($config->{features}{popular});
     my $shop_checked = checked($config->{features}{shop});
     my $ai_checked = checked($config->{features}{ai});
+    my $page_title = h($lang->t('admin.common.settings', 'Settings'));
+    my $dashboard_label = h($lang->t('admin.common.dashboard', 'Dashboard'));
+    my $site_label = h($lang->t('admin.settings.site', 'Site'));
+    my $site_title_label = h($lang->t('admin.settings.site_title', 'Site title'));
+    my $base_url_label = h($lang->t('admin.settings.base_url', 'Base URL'));
+    my $language_label = h($lang->t('admin.settings.language', 'Language'));
+    my $ja_label = h($lang->t('admin.lang.ja', 'Japanese'));
+    my $en_label = h($lang->t('admin.lang.en', 'English'));
+    my $display_label = h($lang->t('admin.settings.display', 'Display'));
+    my $articles_per_page_label = h($lang->t('admin.settings.articles_per_page', 'Articles per page'));
+    my $mini_articles_label = h($lang->t('admin.settings.mini_articles', 'Mini articles'));
+    my $features_label = h($lang->t('admin.settings.features', 'Features'));
+    my $tags_label = h($lang->t('admin.settings.tags', 'Tags'));
+    my $newest_list_label = h($lang->t('admin.settings.newest_list', 'Newest list'));
+    my $popular_list_label = h($lang->t('admin.settings.popular_list', 'Popular list'));
+    my $shop_label = h($lang->t('admin.settings.shop', 'Shop'));
+    my $ai_assist_label = h($lang->t('admin.settings.ai_assist', 'AI assist'));
+    my $shop_title_label = h($lang->t('admin.settings.shop_title', 'Shop title'));
+    my $paypal_id_label = h($lang->t('admin.settings.paypal_id', 'PayPal ID'));
+    my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
-    render_page('Settings', <<"HTML");
+    render_page($lang->t('admin.common.settings', 'Settings'), <<"HTML");
 <section class="article-detail">
-  <a class="back-link" href="index.cgi">Dashboard</a>
-  <h1>Settings</h1>
+  <a class="back-link" href="index.cgi">$dashboard_label</a>
+  <h1>$page_title</h1>
   $saved
   <form class="admin-form" method="post" action="settings.cgi">
     <input type="hidden" name="csrf_token" value="$csrf">
     <fieldset>
-      <legend>Site</legend>
-      <label>Site title<br><input name="site_title" type="text" value="$site_title" required></label>
-      <label>Base URL<br><input name="base_url" type="url" value="$base_url"></label>
-      <label>Language<br>
+      <legend>$site_label</legend>
+      <label>$site_title_label<br><input name="site_title" type="text" value="$site_title" required></label>
+      <label>$base_url_label<br><input name="base_url" type="url" value="$base_url"></label>
+      <label>$language_label<br>
         <select name="language">
-          <option value="ja" $ja_selected>Japanese</option>
-          <option value="en" $en_selected>English</option>
+          <option value="ja" $ja_selected>$ja_label</option>
+          <option value="en" $en_selected>$en_label</option>
         </select>
       </label>
     </fieldset>
     <fieldset>
-      <legend>Display</legend>
-      <label>Articles per page<br><input name="articles_per_page" type="number" min="1" max="100" value="$articles_per_page"></label>
-      <label>Mini articles<br><input name="mini_articles" type="number" min="1" max="100" value="$mini_articles"></label>
+      <legend>$display_label</legend>
+      <label>$articles_per_page_label<br><input name="articles_per_page" type="number" min="1" max="100" value="$articles_per_page"></label>
+      <label>$mini_articles_label<br><input name="mini_articles" type="number" min="1" max="100" value="$mini_articles"></label>
     </fieldset>
     <fieldset>
-      <legend>Features</legend>
-      <label><input name="feature_tags" type="checkbox" value="1" $tags_checked> Tags</label>
-      <label><input name="feature_newest" type="checkbox" value="1" $newest_checked> Newest list</label>
-      <label><input name="feature_popular" type="checkbox" value="1" $popular_checked> Popular list</label>
-      <label><input name="feature_shop" type="checkbox" value="1" $shop_checked> Shop</label>
-      <label><input name="feature_ai" type="checkbox" value="1" $ai_checked> AI assist</label>
+      <legend>$features_label</legend>
+      <label><input name="feature_tags" type="checkbox" value="1" $tags_checked> $tags_label</label>
+      <label><input name="feature_newest" type="checkbox" value="1" $newest_checked> $newest_list_label</label>
+      <label><input name="feature_popular" type="checkbox" value="1" $popular_checked> $popular_list_label</label>
+      <label><input name="feature_shop" type="checkbox" value="1" $shop_checked> $shop_label</label>
+      <label><input name="feature_ai" type="checkbox" value="1" $ai_checked> $ai_assist_label</label>
     </fieldset>
     <fieldset>
-      <legend>Shop</legend>
-      <label>Shop title<br><input name="shop_title" type="text" value="$shop_title"></label>
-      <label>PayPal ID<br><input name="paypal_id" type="text" value="$paypal_id"></label>
+      <legend>$shop_label</legend>
+      <label>$shop_title_label<br><input name="shop_title" type="text" value="$shop_title"></label>
+      <label>$paypal_id_label<br><input name="paypal_id" type="text" value="$paypal_id"></label>
     </fieldset>
-    <button type="submit">Save Settings</button>
+    <button type="submit">$save_label</button>
   </form>
 </section>
 HTML
@@ -185,8 +207,13 @@ sub render_page {
         title   => $title,
         active  => 'settings',
         root    => $ROOT,
+        lang    => $lang,
         content => $content,
     );
+}
+
+sub h {
+    return Mark6::CGI::escape_html($_[0] || '');
 }
 
 sub default_root {

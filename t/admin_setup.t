@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Path qw(make_path remove_tree);
 use File::Spec;
@@ -40,7 +41,7 @@ my $setup_form = run_cgi(
     script => File::Spec->catfile('admin', 'setup.cgi'),
     method => 'GET',
 );
-like($setup_form, qr/MARK6 Setup/, 'setup form renders');
+like($setup_form, qr/MARK6 初期設定/, 'setup form renders');
 
 my $setup = run_cgi(
     script => File::Spec->catfile('admin', 'setup.cgi'),
@@ -67,6 +68,9 @@ my $config = read_json(File::Spec->catfile($root, 'dat', 'config.json'));
 is($config->{site}{title}, '初期サイト', 'site title saved');
 is($config->{site}{language}, 'ja', 'language saved');
 
+my $home = read_json(File::Spec->catfile($root, 'dat', 'home.json'));
+is($home->{title}, 'ホーム', 'Japanese setup creates Japanese home title');
+
 my $users = read_json(File::Spec->catfile($root, 'dat', 'users.json'));
 is(scalar @{$users->{users}}, 1, 'one admin user created');
 is($users->{users}[0]{name}, 'admin', 'admin user name saved');
@@ -90,7 +94,7 @@ sub run_cgi {
     local $ENV{QUERY_STRING} = $args{query} || '';
     local $ENV{HTTP_COOKIE} = $args{cookie} || '';
     local $ENV{HTTPS} = '';
-    local $ENV{CONTENT_TYPE} = $args{content_type} || 'application/x-www-form-urlencoded';
+    local $ENV{CONTENT_TYPE} = 'application/x-www-form-urlencoded';
 
     my $body = $args{body} || '';
     local $ENV{CONTENT_LENGTH} = length($body);

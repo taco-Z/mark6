@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Path qw(make_path remove_tree);
 use File::Spec;
@@ -18,17 +19,6 @@ write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, user
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
     site => { title => 'MARK6 Test', language => 'ja', base_url => '' },
-});
-make_path(File::Spec->catdir($root, 'dat', 'lang'));
-write_json(File::Spec->catfile($root, 'dat', 'lang', 'ja.json'), {
-    'admin.title' => '管理画面',
-    'admin.nav.dashboard' => 'ダッシュボード',
-    'admin.nav.home' => 'ホーム',
-    'admin.nav.articles' => '記事',
-    'admin.nav.media' => 'メディア',
-    'admin.nav.settings' => '設定',
-    'admin.nav.view_site' => 'サイト表示',
-    'admin.nav.logout' => 'ログアウト',
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
@@ -62,6 +52,7 @@ for my $case (
         cookie => "mark6_session=$session_id",
     );
 
+    like($page, qr/<html lang="ja">/, "$title page sets Japanese html language");
     like($page, qr/MARK6 管理画面/, "$title page uses admin layout");
     like($page, qr/class="site-nav admin-nav"/, "$title page uses shared admin nav");
     like($page, qr/<a class="active" href="\Q$active_href\E">/, "$title page marks active nav");
@@ -73,6 +64,22 @@ for my $case (
     like($page, qr/logout\.cgi/, "$title nav links logout");
     like($page, qr/href="\.\.\/public\/index\.cgi" target="_blank" rel="noopener"/, "$title nav opens site view in a new tab");
 }
+
+write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
+    version => 1,
+    site => { title => 'MARK6 Test', language => 'en', base_url => '' },
+});
+
+my $english_page = run_cgi(
+    script => File::Spec->catfile('admin', 'index.cgi'),
+    method => 'GET',
+    cookie => "mark6_session=$session_id",
+);
+like($english_page, qr/<html lang="en">/, 'English admin page sets html language');
+like($english_page, qr/MARK6 Admin/, 'English admin page uses English title');
+like($english_page, qr/>Dashboard<\/a>/, 'English admin nav uses Dashboard label');
+like($english_page, qr/>View Site<\/a>/, 'English admin nav uses View Site label');
+unlike($english_page, qr/サイト表示/, 'English admin nav does not keep Japanese labels');
 
 remove_tree($root);
 done_testing;
