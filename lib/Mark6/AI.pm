@@ -2,6 +2,7 @@ package Mark6::AI;
 
 use strict;
 use warnings;
+use Cwd qw(abs_path);
 use JSON::PP qw(decode_json);
 use IPC::Open3 qw(open3);
 use Symbol qw(gensym);
@@ -15,6 +16,7 @@ sub new {
         provider    => $ai->{provider} || 'openai',
         model       => $ai->{model} || _env_value('MARK6_OPENAI_MODEL') || 'gpt-5.2',
         api_key_env => $ai->{api_key_env} || 'MARK6_OPENAI_API_KEY',
+        api_key_file => $ai->{api_key_file} || _env_value('MARK6_OPENAI_API_KEY_FILE') || default_api_key_file(),
     }, $class;
 }
 
@@ -33,8 +35,8 @@ sub _suggest_article_openai {
     my ($self, $article) = @_;
     die "Unsupported AI provider: $self->{provider}" unless $self->{provider} eq 'openai';
 
-    my $api_key = _env_value($self->{api_key_env});
-    die "AI API key is not configured. Set $self->{api_key_env}." if $api_key eq '';
+    my $api_key = _env_value($self->{api_key_env}) || _file_value($self->{api_key_file});
+    die "AI API key is not configured. Set $self->{api_key_env} or write the key file $self->{api_key_file}." if $api_key eq '';
 
     my $payload = JSON::PP->new->utf8->canonical->encode({
         model => $self->{model},
@@ -126,6 +128,25 @@ sub _env_value {
     }
 
     return '';
+}
+
+sub default_api_key_file {
+    my $home = $ENV{HOME} || eval { (getpwuid($<))[7] } || '';
+    return '' if $home eq '';
+    return "$home/.mark6_openai_key";
+}
+
+sub _file_value {
+    my ($path) = @_;
+    return '' unless defined $path && $path ne '';
+    return '' if $path =~ /\0/;
+    return '' unless -f $path;
+
+    open my $fh, '<:raw', $path or return '';
+    my $value = <$fh> || '';
+    close $fh;
+    $value =~ s/\A\s+|\s+\z//g;
+    return $value;
 }
 
 sub _response_text {

@@ -21,7 +21,7 @@ write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::false, shop => JSON::PP::false, ai => JSON::PP::false },
     display => { articles_per_page => 20, mini_articles => 15 },
     shop => { title => 'Shop', paypal_id => '' },
-    ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY' },
+    ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY', api_key_file => '' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Home',
@@ -55,6 +55,7 @@ my $settings = run_cgi(
 like($settings, qr/設定/, 'settings form renders');
 like($settings, qr/Before Site/, 'settings form includes current site title');
 like($settings, qr/name="ai_model"/, 'settings form includes AI model field');
+like($settings, qr/name="ai_api_key_file"/, 'settings form includes AI key file field');
 my ($csrf) = $settings =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'settings form includes csrf token');
 
@@ -75,6 +76,7 @@ my $save = run_cgi(
         paypal_id => 'seller@example.test',
         ai_model => 'custom-model',
         ai_api_key_env => 'CUSTOM_OPENAI_KEY',
+        ai_api_key_file => '/home/example/.mark6_openai_key',
     ),
 );
 like($save, qr/Location: settings\.cgi\?saved=1/, 'settings save redirects');
@@ -95,6 +97,7 @@ is($config->{shop}{paypal_id}, 'seller@example.test', 'paypal id saved');
 is($config->{ai}{provider}, 'openai', 'ai provider saved');
 is($config->{ai}{model}, 'custom-model', 'ai model saved');
 is($config->{ai}{api_key_env}, 'CUSTOM_OPENAI_KEY', 'ai api key env saved');
+is($config->{ai}{api_key_file}, '/home/example/.mark6_openai_key', 'ai api key file saved');
 
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),

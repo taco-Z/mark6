@@ -79,6 +79,7 @@ sub render_settings {
     my $ai_provider = Mark6::CGI::escape_html($config->{ai}{provider} || 'openai');
     my $ai_model = Mark6::CGI::escape_html($config->{ai}{model} || 'gpt-5.2');
     my $ai_api_key_env = Mark6::CGI::escape_html($config->{ai}{api_key_env} || 'MARK6_OPENAI_API_KEY');
+    my $ai_api_key_file = Mark6::CGI::escape_html($config->{ai}{api_key_file} || '');
 
     my $tags_checked = checked($config->{features}{tags});
     my $newest_checked = checked($config->{features}{newest});
@@ -109,6 +110,8 @@ sub render_settings {
     my $ai_model_label = h($lang->t('admin.settings.ai_model', 'AI model'));
     my $ai_api_key_env_label = h($lang->t('admin.settings.ai_api_key_env', 'API key environment variable'));
     my $ai_api_key_env_help = h($lang->t('admin.settings.ai_api_key_env_help', 'Enter the server environment variable name, not the API key itself.'));
+    my $ai_api_key_file_label = h($lang->t('admin.settings.ai_api_key_file', 'API key file path'));
+    my $ai_api_key_file_help = h($lang->t('admin.settings.ai_api_key_file_help', 'Optional. Keep this file outside the public web directory.'));
     my $openai_label = h($lang->t('admin.settings.ai_provider_openai', 'OpenAI'));
     my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
@@ -158,6 +161,8 @@ sub render_settings {
       <label>$ai_model_label<br><input name="ai_model" type="text" value="$ai_model"></label>
       <label>$ai_api_key_env_label<br><input name="ai_api_key_env" type="text" value="$ai_api_key_env"></label>
       <p class="meta">$ai_api_key_env_help</p>
+      <label>$ai_api_key_file_label<br><input name="ai_api_key_file" type="text" value="$ai_api_key_file" placeholder="/home/example/.mark6_openai_key"></label>
+      <p class="meta">$ai_api_key_file_help</p>
     </fieldset>
     <button type="submit">$save_label</button>
   </form>
@@ -193,6 +198,7 @@ sub save_settings {
     $config->{ai}{provider} = 'openai';
     $config->{ai}{model} = clean_text($params{ai_model} || 'gpt-5.2');
     $config->{ai}{api_key_env} = clean_env_name($params{ai_api_key_env} || 'MARK6_OPENAI_API_KEY');
+    $config->{ai}{api_key_file} = clean_path($params{ai_api_key_file} || '');
 
     $store->write_json($config, 'dat', 'config.json');
 }
@@ -204,7 +210,7 @@ sub load_config {
         features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, shop => JSON::PP::false, ai => JSON::PP::false },
         display => { articles_per_page => 20, mini_articles => 15 },
         shop => { title => 'Shop', paypal_id => '' },
-        ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY' },
+        ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY', api_key_file => '' },
     };
 }
 
@@ -237,6 +243,13 @@ sub clean_env_name {
     my ($value) = @_;
     $value = clean_text($value);
     return $value =~ /\A[A-Za-z_][A-Za-z0-9_]*\z/ ? $value : 'MARK6_OPENAI_API_KEY';
+}
+
+sub clean_path {
+    my ($value) = @_;
+    $value = clean_text($value);
+    return '' if $value =~ /\0/;
+    return $value;
 }
 
 sub render_page {

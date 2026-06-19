@@ -70,6 +70,7 @@ is($config->{site}{language}, 'ja', 'language saved');
 is($config->{ai}{provider}, 'openai', 'setup writes AI provider');
 is($config->{ai}{model}, 'gpt-5.2', 'setup writes default AI model');
 is($config->{ai}{api_key_env}, 'MARK6_OPENAI_API_KEY', 'setup writes AI key environment name');
+is($config->{ai}{api_key_file}, '', 'setup writes empty AI key file path');
 
 my $home = read_json(File::Spec->catfile($root, 'dat', 'home.json'));
 is($home->{title}, 'ホーム', 'Japanese setup creates Japanese home title');

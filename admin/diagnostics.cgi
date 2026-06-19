@@ -54,6 +54,7 @@ sub render_diagnostics {
     my $config = $store->read_json('dat', 'config.json') || {};
     my $ai = $config->{ai} || {};
     my $api_key_env = $ai->{api_key_env} || 'MARK6_OPENAI_API_KEY';
+    my $api_key_file = $ai->{api_key_file} || default_api_key_file();
     my @candidate_names = env_candidates($api_key_env);
     my $env_rows = join "\n", map { env_row($_) } @candidate_names;
     my $related_env = related_env_summary();
@@ -62,6 +63,8 @@ sub render_diagnostics {
     my $model = h($ai->{model} || 'gpt-5.2');
     my $provider = h($ai->{provider} || 'openai');
     my $safe_api_key_env = h($api_key_env);
+    my $safe_api_key_file = h($api_key_file || '(none)');
+    my $api_key_file_status = h(file_status($api_key_file));
     my $script_name = h($ENV{SCRIPT_NAME} || '');
     my $request_uri = h($ENV{REQUEST_URI} || '');
     my $redirect_status = h($ENV{REDIRECT_STATUS} || '');
@@ -83,6 +86,8 @@ sub render_diagnostics {
     <div class="meta">Provider: $provider</div>
     <div class="meta">Model: $model</div>
     <div class="meta">Configured API key environment variable name: $safe_api_key_env</div>
+    <div class="meta">API key file path: $safe_api_key_file</div>
+    <div class="meta">API key file status: $api_key_file_status</div>
   </fieldset>
 
   <fieldset>
@@ -144,6 +149,21 @@ sub curl_summary {
     };
     return $ok if defined $ok && $ok ne '';
     return 'not available';
+}
+
+sub default_api_key_file {
+    my $home = $ENV{HOME} || eval { (getpwuid($<))[7] } || '';
+    return '' if $home eq '';
+    return "$home/.mark6_openai_key";
+}
+
+sub file_status {
+    my ($path) = @_;
+    return 'not configured' unless defined $path && $path ne '';
+    return 'missing' unless -e $path;
+    return 'not a file' unless -f $path;
+    return 'readable' if -r $path;
+    return 'not readable';
 }
 
 sub first_line {

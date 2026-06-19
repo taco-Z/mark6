@@ -131,6 +131,7 @@ sub initialize_site {
             provider    => 'openai',
             model       => 'gpt-5.2',
             api_key_env => 'MARK6_OPENAI_API_KEY',
+            api_key_file => '',
         },
     }, 'dat', 'config.json');
 
