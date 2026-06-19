@@ -108,6 +108,7 @@ sub render_settings {
     my $ai_provider_label = h($lang->t('admin.settings.ai_provider', 'AI provider'));
     my $ai_model_label = h($lang->t('admin.settings.ai_model', 'AI model'));
     my $ai_api_key_env_label = h($lang->t('admin.settings.ai_api_key_env', 'API key environment variable'));
+    my $ai_api_key_env_help = h($lang->t('admin.settings.ai_api_key_env_help', 'Enter the server environment variable name, not the API key itself.'));
     my $openai_label = h($lang->t('admin.settings.ai_provider_openai', 'OpenAI'));
     my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
@@ -156,6 +157,7 @@ sub render_settings {
       </label>
       <label>$ai_model_label<br><input name="ai_model" type="text" value="$ai_model"></label>
       <label>$ai_api_key_env_label<br><input name="ai_api_key_env" type="text" value="$ai_api_key_env"></label>
+      <p class="meta">$ai_api_key_env_help</p>
     </fieldset>
     <button type="submit">$save_label</button>
   </form>
