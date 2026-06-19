@@ -31,4 +31,10 @@ use Mark6::AI;
     is(Mark6::AI::_file_value($path), 'file-key', 'reads API key from file');
 }
 
+{
+    my $result = Mark6::AI::_decode_json_text('{"summary":"別府駅の紹介","seo_description":"温泉街への玄関口です。","suggested_tags":["別府","観光"]}');
+    is($result->{summary}, '別府駅の紹介', 'decodes JSON text containing wide characters');
+    is_deeply($result->{suggested_tags}, ['別府', '観光'], 'keeps Japanese tag strings');
+}
+
 done_testing;

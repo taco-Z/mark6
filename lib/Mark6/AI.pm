@@ -67,7 +67,7 @@ sub _suggest_article_openai {
 
     $text =~ s/\A\s*```(?:json)?\s*//;
     $text =~ s/\s*```\s*\z//;
-    return decode_json($text);
+    return _decode_json_text($text);
 }
 
 sub article_prompt {
@@ -160,6 +160,11 @@ sub _response_text {
         }
     }
     return join "\n", @texts;
+}
+
+sub _decode_json_text {
+    my ($text) = @_;
+    return JSON::PP->new->decode($text);
 }
 
 sub _normalize_result {
