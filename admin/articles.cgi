@@ -69,7 +69,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
-    if ($command =~ /\Aai_(?:suggest|draft|translate|rewrite|seo)\z/) {
+    if ($command =~ /\Aai_(?:suggest|draft|translate|rewrite|seo|seo_rewrite)\z/) {
         my $article_id = '';
         my $error = run_admin_action(sub {
             $article_id = save_article();
@@ -84,7 +84,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
-    if ($command =~ /\Aai_apply_(draft|rewrite|translation)\z/) {
+    if ($command =~ /\Aai_apply_(draft|rewrite|seo_rewrite|translation)\z/) {
         my $action = $1;
         my $article_id = '';
         my $error = run_admin_action(sub {
@@ -316,6 +316,13 @@ sub perform_ai_action {
     elsif ($command eq 'ai_rewrite') {
         $article->{ai}{rewrite} = $assistant->rewrite_body(article => $article, lang => $default_lang);
     }
+    elsif ($command eq 'ai_seo_rewrite') {
+        $article->{ai}{seo_rewrite} = $assistant->seo_rewrite_body(
+            article => $article,
+            lang    => $default_lang,
+            seo     => $article->{ai}{seo} || {},
+        );
+    }
     elsif ($command eq 'ai_seo') {
         $article->{ai}{seo} = $assistant->diagnose_seo(article => $article);
     }
@@ -334,7 +341,7 @@ sub apply_ai_result {
     my $ai = $article->{ai} || {};
     my $default_lang = Mark6::Article::default_lang($article, $config);
 
-    if ($action eq 'draft' || $action eq 'rewrite') {
+    if ($action eq 'draft' || $action eq 'rewrite' || $action eq 'seo_rewrite') {
         my $result = $ai->{$action} || {};
         die "No AI $action result is available" unless ($result->{body} || '') ne '';
         $article->{langs}{$default_lang}{body} = $result->{body};
@@ -446,15 +453,18 @@ sub ai_panel {
     my $translate_label = h($lang->t('admin.ai.translate', 'Translate'));
     my $rewrite_label = h($lang->t('admin.ai.rewrite', 'Rewrite'));
     my $seo_label = h($lang->t('admin.ai.seo', 'SEO diagnosis'));
+    my $seo_rewrite_label = h($lang->t('admin.ai.seo_rewrite', 'SEO rewrite'));
     my $apply_label = h($lang->t('admin.ai.apply', 'Apply to article'));
     my $target_label = h($lang->t('admin.ai.target_lang', 'Translation language'));
     my $draft = $ai->{draft} || {};
     my $rewrite = $ai->{rewrite} || {};
+    my $seo_rewrite = $ai->{seo_rewrite} || {};
     my $target_lang = ai_target_lang($article);
     my $translation = ($ai->{translations} || {})->{$target_lang} || {};
     my $seo = $ai->{seo} || {};
     my $draft_body = h($draft->{body} || '');
     my $rewrite_body = h($rewrite->{body} || '');
+    my $seo_rewrite_body = h($seo_rewrite->{body} || '');
     my $translation_title = h($translation->{title} || '');
     my $translation_description = h($translation->{description} || '');
     my $translation_body = h($translation->{body} || '');
@@ -464,8 +474,19 @@ sub ai_panel {
     my $target_options = ai_target_options($article, $target_lang);
     my $draft_meta = ai_result_meta($draft);
     my $rewrite_meta = ai_result_meta($rewrite);
+    my $seo_rewrite_meta = ai_result_meta($seo_rewrite);
     my $translation_meta = ai_result_meta($translation);
     my $seo_meta = ai_result_meta($seo);
+    my $has_seo = ($seo->{last_processed_at} || '') ne '' || ($seo->{diagnosis} || '') ne '' || ($seo->{seo_description} || '') ne '' || @{$seo->{suggested_tags} || []};
+    my $seo_rewrite_action = $has_seo ? qq|<button type="submit" name="command" value="ai_seo_rewrite">$seo_rewrite_label</button>| : '';
+    my $seo_rewrite_panel = $has_seo ? <<"HTML" : '';
+      <fieldset>
+        <legend>$seo_rewrite_label</legend>
+        <textarea rows="8" readonly>$seo_rewrite_body</textarea>
+        $seo_rewrite_meta
+        <button type="submit" name="command" value="ai_apply_seo_rewrite">$apply_label</button>
+      </fieldset>
+HTML
 
     return <<"HTML";
     <fieldset id="ai-assist">
@@ -506,7 +527,9 @@ sub ai_panel {
         <label>Suggested tags<br><input type="text" value="$seo_tags" readonly onclick="this.select()"></label>
         <label>Diagnosis<br><textarea rows="4" readonly>$seo_diagnosis</textarea></label>
         $seo_meta
+        $seo_rewrite_action
       </fieldset>
+      $seo_rewrite_panel
     </fieldset>
 HTML
 }
@@ -549,6 +572,7 @@ sub ai_notice {
         ai_translate => 'admin.ai.translate_done',
         ai_rewrite   => 'admin.ai.rewrite_done',
         ai_seo       => 'admin.ai.seo_done',
+        ai_seo_rewrite => 'admin.ai.seo_rewrite_done',
         ai_suggest   => 'admin.ai.done',
         applied      => 'admin.ai.applied',
     );

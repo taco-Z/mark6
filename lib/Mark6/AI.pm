@@ -101,6 +101,43 @@ sub rewrite_body {
     return _normalize_body_result($result, $self->{provider}, $self->{model});
 }
 
+sub seo_rewrite_body {
+    my ($self, %args) = @_;
+    my $lang = $args{lang} || 'ja';
+    my $article = $args{article} || {};
+    my $entry = ($article->{langs} || {})->{$lang} || {};
+    my $seo = $args{seo} || {};
+    my $diagnosis = $seo->{diagnosis} || '';
+    my $seo_description = $seo->{seo_description} || '';
+    my $tags = join(', ', @{$seo->{suggested_tags} || []});
+
+    die 'Run an SEO diagnosis before requesting an SEO rewrite.'
+        if $diagnosis eq '' && $seo_description eq '' && $tags eq '';
+
+    my $prompt = join("\n\n",
+        'Improve this existing article body using the supplied SEO review.',
+        "Title:\n" . ($entry->{title} || ''),
+        "Description HTML:\n" . ($entry->{description} || ''),
+        "Body HTML:\n" . ($entry->{body} || ''),
+        "SEO description suggestion:\n$seo_description",
+        "Suggested tags:\n$tags",
+        "SEO diagnosis:\n$diagnosis",
+    );
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You are a careful website editor with SEO expertise.',
+            "Write in language code: $lang.",
+            'Return only one JSON object with a body property.',
+            'body must be an HTML fragment using simple semantic tags such as p, h2, ul, li, strong, and a.',
+            'Address the useful SEO review points naturally. Do not stuff keywords or invent facts.',
+            'Preserve factual claims, links, and the article tone unless the source is clearly malformed.',
+            'Do not include markdown fences or an explanation.',
+        ),
+        prompt => $prompt,
+    );
+    return _normalize_body_result($result, $self->{provider}, $self->{model});
+}
+
 sub diagnose_seo {
     my ($self, %args) = @_;
     my $result = $self->_request_json(

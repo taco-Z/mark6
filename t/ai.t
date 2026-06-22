@@ -76,4 +76,18 @@ my $assistant = Mark6::AI->new(config => { ai => { model => 'test-model' } });
     is_deeply($result->{suggested_tags}, ['Travel', 'Beppu'], 'generates SEO tag suggestions');
 }
 
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = '{"body":"<h2>Improved heading</h2><p>SEO-aware body.</p>"}';
+    my $result = $assistant->seo_rewrite_body(
+        article => $article,
+        lang    => 'ja',
+        seo     => {
+            seo_description => 'SEO description.',
+            suggested_tags  => ['Travel', 'Beppu'],
+            diagnosis       => 'Add a clearer heading.',
+        },
+    );
+    is($result->{body}, '<h2>Improved heading</h2><p>SEO-aware body.</p>', 'generates an SEO-aware rewrite result');
+}
+
 done_testing;
