@@ -157,6 +157,7 @@ sub article_row {
     my $title = Mark6::CGI::escape_html(Mark6::Article::title_for($article, Mark6::Article::default_lang($article, $config), $config));
     my $status = Mark6::CGI::escape_html($article->{status} || 'draft');
     my $date = Mark6::CGI::escape_html(format_date($article->{created_at} || ''));
+    my $translations = translation_status_summary($article);
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $view_url = Mark6::CGI::escape_html(public_article_url($article));
     my $view_label = h($lang->t('admin.common.view', 'View'));
@@ -169,6 +170,7 @@ sub article_row {
   <div>
     <strong>$title</strong>
     <div class="meta">$status / $date / ID $id</div>
+    <div class="meta translation-state">$translations</div>
   </div>
   <div class="admin-actions">
     <a href="$view_url" target="_blank" rel="noopener">$view_label</a>
@@ -270,6 +272,7 @@ sub save_article {
     my $default_title = $langs->{$default_lang}{title} || $existing->{title} || 'Untitled';
     my $default_description = $langs->{$default_lang}{description} || $existing->{intro} || '';
     my $default_body = $langs->{$default_lang}{body} || $existing->{body} || '';
+    my $translation_status = translation_status_after_save($existing, $langs, $default_lang);
 
     my $article = {
         %{$existing},
@@ -278,6 +281,7 @@ sub save_article {
         status     => normalize_status($params{status}),
         default_lang => $default_lang,
         langs      => $langs,
+        translation_status => $translation_status,
         title      => $default_title,
         slug       => safe_segment($params{slug} || $existing->{slug} || $id),
         node       => safe_segment($params{node} || $existing->{node} || $config->{site}{node} || 'oita360'),
@@ -338,7 +342,9 @@ sub perform_ai_action {
         );
     }
     elsif ($command eq 'ai_seo') {
-        $article->{ai}{seo} = $assistant->diagnose_seo(article => $article);
+        my $seo = $assistant->diagnose_seo(article => $article, lang => $default_lang);
+        $seo->{lang} = $default_lang;
+        $article->{ai}{seo} = $seo;
     }
     else {
         die "Unknown AI action";
@@ -358,7 +364,9 @@ sub apply_ai_result {
     if ($action eq 'draft' || $action eq 'rewrite' || $action eq 'seo_rewrite') {
         my $result = $ai->{$action} || {};
         die "No AI $action result is available" unless ($result->{body} || '') ne '';
+        my $changed = ($article->{langs}{$default_lang}{body} || '') ne ($result->{body} || '');
         $article->{langs}{$default_lang}{body} = $result->{body};
+        mark_translations_outdated($article, $default_lang) if $changed;
     }
     elsif ($action eq 'translation') {
         my $target_lang = normalize_lang($params{ai_target_lang} || '');
@@ -369,6 +377,8 @@ sub apply_ai_result {
             description => $result->{description} || '',
             body        => $result->{body} || '',
         };
+        $article->{translation_status} ||= {};
+        $article->{translation_status}{$target_lang} = { state => 'translated' };
     }
     else {
         die "Unknown AI result";
@@ -460,7 +470,7 @@ sub language_fields {
     return join "\n", map {
         my $lang_code = $_;
         my $entry = $article->{langs}{$lang_code} || {};
-        my $label = uc $lang_code;
+        my $label = uc($lang_code) . ' - ' . translation_state_label($article, $lang_code);
         my $title = Mark6::CGI::escape_html($entry->{title} || '');
         my $description = Mark6::CGI::escape_html($entry->{description} || '');
         my $body = Mark6::CGI::escape_html($entry->{body} || '');
@@ -477,6 +487,87 @@ sub language_fields {
     </fieldset>
 HTML
     } @article_langs;
+}
+
+sub translation_status_summary {
+    my ($article) = @_;
+    return join ' / ', map {
+        uc($_) . ': ' . translation_state_label($article, $_)
+    } @article_langs;
+}
+
+sub translation_state_label {
+    my ($article, $lang_code) = @_;
+    my $state = Mark6::Article::translation_state($article, $lang_code, $config);
+    my %keys = (
+        source       => 'admin.article.translation_source',
+        translated   => 'admin.article.translation_translated',
+        untranslated => 'admin.article.translation_untranslated',
+        outdated     => 'admin.article.translation_outdated',
+    );
+    my %fallbacks = (
+        source       => 'Source',
+        translated   => 'Translated',
+        untranslated => 'Untranslated',
+        outdated     => 'Needs update',
+    );
+    return h($lang->t($keys{$state} || $keys{untranslated}, $fallbacks{$state} || $fallbacks{untranslated}));
+}
+
+sub translation_status_after_save {
+    my ($existing, $langs, $default_lang) = @_;
+    my %status = ref($existing->{translation_status}) eq 'HASH' ? %{$existing->{translation_status}} : ();
+    my $previous_default = Mark6::Article::default_lang($existing, $config);
+    my $has_existing = ($existing->{id} || '') ne '';
+    my $source_changed = $has_existing && (
+        $previous_default ne $default_lang ||
+        language_entry_changed($existing->{langs}{$default_lang}, $langs->{$default_lang})
+    );
+
+    for my $lang_code (@article_langs) {
+        next if $lang_code eq $default_lang;
+        if (!language_entry_has_content($langs->{$lang_code})) {
+            $status{$lang_code} = { state => 'untranslated' };
+        }
+        elsif ($source_changed) {
+            $status{$lang_code} = { state => 'outdated' };
+        }
+        elsif (language_entry_changed($existing->{langs}{$lang_code}, $langs->{$lang_code})) {
+            $status{$lang_code} = { state => 'translated' };
+        }
+        elsif ((($status{$lang_code} || {})->{state} || '') ne 'outdated') {
+            $status{$lang_code} = { state => 'translated' };
+        }
+    }
+
+    return \%status;
+}
+
+sub mark_translations_outdated {
+    my ($article, $default_lang) = @_;
+    $article->{translation_status} ||= {};
+    for my $lang_code (@article_langs) {
+        next if $lang_code eq $default_lang;
+        $article->{translation_status}{$lang_code} = {
+            state => language_entry_has_content($article->{langs}{$lang_code}) ? 'outdated' : 'untranslated',
+        };
+    }
+}
+
+sub language_entry_changed {
+    my ($before, $after) = @_;
+    $before ||= {};
+    $after ||= {};
+    for my $field (qw(title description body)) {
+        return 1 if ($before->{$field} || '') ne ($after->{$field} || '');
+    }
+    return 0;
+}
+
+sub language_entry_has_content {
+    my ($entry) = @_;
+    return 0 unless ref($entry) eq 'HASH';
+    return scalar grep { defined($entry->{$_}) && $entry->{$_} =~ /\S/ } qw(title description body);
 }
 
 sub ai_panel {

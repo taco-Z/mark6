@@ -49,11 +49,13 @@ if (should_redirect_root($request_path, $route)) {
 my $site_title = value_at($config, 'site', 'title') || 'MARK6';
 my $content;
 my $page_title = $site_title;
+my $page_description = '';
 
 if ($route->{type} eq 'article') {
     my $article = find_article_by_slug($route->{node}, $route->{slug});
     if ($article) {
         $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
+        $page_description = article_meta_description($article);
         $content = render_article_detail($article);
     }
     else {
@@ -68,6 +70,7 @@ elsif ($order eq 'focus') {
     my $article = find_article($in{tar} || '');
     if ($article) {
         $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
+        $page_description = article_meta_description($article);
         $content = render_article_detail($article);
     }
     else {
@@ -84,7 +87,7 @@ else {
     $content = render_home($home, \@articles);
 }
 
-print encode('UTF-8', render_page($page_title, $site_title, $content, undef));
+print encode('UTF-8', render_page($page_title, $site_title, $content, $page_description));
 
 sub parse_query {
     my $query = $ENV{QUERY_STRING} || '';
@@ -407,8 +410,18 @@ sub render_not_found {
 HTML
 }
 
+sub article_meta_description {
+    my ($article) = @_;
+    my $seo = (($article->{ai} || {})->{seo} || {});
+    my $seo_lang = $seo->{lang} || Mark6::Article::default_lang($article, $config);
+    my $description = $seo_lang eq $current_lang ? ($seo->{seo_description} || '') : '';
+    $description = Mark6::Article::description_for($article, $current_lang, $config) if $description eq '';
+    $description = Mark6::Article::title_for($article, $current_lang, $config) if $description eq '';
+    return plain_text($description);
+}
+
 sub render_page {
-    my ($page_title, $site_title, $content) = @_;
+    my ($page_title, $site_title, $content, $page_description) = @_;
     my $safe_page_title = escape_html($page_title);
     my $safe_site_title = escape_html($site_title);
     my $language_links = render_language_links();
@@ -416,6 +429,10 @@ sub render_page {
     my $articles_href = escape_attr(article_list_url());
     my $css_href = escape_attr(asset_url('css/mark6.css'));
     my $lang_cookie = lang_cookie_header();
+    my $safe_page_description = escape_attr($page_description || '');
+    my $description_meta = $page_description ne ''
+        ? qq|  <meta name="description" content="$safe_page_description">\n|
+        : '';
 
     return <<"HTML";
 Content-Type: text/html; charset=UTF-8
@@ -426,6 +443,7 @@ $lang_cookie
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  $description_meta
   <title>$safe_page_title</title>
   <link rel="stylesheet" href="$css_href">
 </head>
@@ -450,6 +468,19 @@ HTML
 sub trusted_html {
     my ($html) = @_;
     return $html;
+}
+
+sub plain_text {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/<[^>]+>/ /g;
+    $value =~ s/&nbsp;/ /g;
+    $value =~ s/&amp;/&/g;
+    $value =~ s/&lt;/</g;
+    $value =~ s/&gt;/>/g;
+    $value =~ s/\s+/ /g;
+    $value =~ s/^\s+|\s+$//g;
+    return $value;
 }
 
 sub lang_cookie_header {

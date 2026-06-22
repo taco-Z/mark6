@@ -140,9 +140,11 @@ sub seo_rewrite_body {
 
 sub diagnose_seo {
     my ($self, %args) = @_;
+    my $lang = $args{lang} || ($args{article} || {})->{default_lang} || 'ja';
     my $result = $self->_request_json(
         system => join("\n",
             'You are an SEO editor for a website article.',
+            "Write in language code: $lang.",
             'Return only one JSON object with seo_description, suggested_tags, and diagnosis.',
             'seo_description and diagnosis must be concise plain text.',
             'suggested_tags must be an array of short tag strings.',

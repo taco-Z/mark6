@@ -60,6 +60,12 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
     },
     tags => ['News'],
     image => '',
+    ai => {
+        seo => {
+            lang => 'ja',
+            seo_description => 'Japanese SEO description',
+        },
+    },
     created_at => '2013-08-02T13:56:45Z',
 });
 
@@ -76,9 +82,12 @@ my $detail = run_cgi('order=focus&tar=1375451805');
 like($detail, qr/別府駅/, 'renders legacy detail title');
 like($detail, qr/日本語本文です。/, 'renders legacy detail body');
 like($detail, qr/href="\/test\/mark6\/en\/oita360\/beppu-station\/"/, 'detail links alternate language');
+like($detail, qr/<meta name="description" content="Japanese SEO description">/, 'renders the matching language SEO description');
 
 my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
+like($en_detail, qr/<meta name="description" content="About Beppu Station">/, 'uses localized content when no matching language SEO description exists');
+unlike($en_detail, qr/Japanese SEO description/, 'does not use a different language SEO description');
 my $request_uri_detail = run_cgi('', '', '/public/index.cgi/en/oita360/beppu-station/?x=1');
 like($request_uri_detail, qr/Beppu Station/, 'falls back to REQUEST_URI and strips public/index.cgi');
 

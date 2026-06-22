@@ -57,6 +57,10 @@ my %DEFAULTS = (
         'admin.article.field_title'      => 'タイトル',
         'admin.article.field_description_html' => '説明HTML',
         'admin.article.field_body_html'  => '本文HTML',
+        'admin.article.translation_source' => '原文',
+        'admin.article.translation_translated' => '翻訳済み',
+        'admin.article.translation_untranslated' => '未翻訳',
+        'admin.article.translation_outdated' => '要更新',
 
         'admin.home.saved'               => 'ホームを保存しました。',
         'admin.home.title_label'         => 'タイトル',
@@ -198,6 +202,10 @@ my %DEFAULTS = (
         'admin.article.field_title'      => 'Title',
         'admin.article.field_description_html' => 'Description HTML',
         'admin.article.field_body_html'  => 'Body HTML',
+        'admin.article.translation_source' => 'Source',
+        'admin.article.translation_translated' => 'Translated',
+        'admin.article.translation_untranslated' => 'Untranslated',
+        'admin.article.translation_outdated' => 'Needs update',
 
         'admin.home.saved'               => 'Home saved.',
         'admin.home.title_label'         => 'Title',

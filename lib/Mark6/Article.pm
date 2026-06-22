@@ -73,6 +73,28 @@ sub body_for {
     return localized($article, $lang, $config)->{body};
 }
 
+sub translation_state {
+    my ($article, $lang, $config) = @_;
+    $article = normalize($article, $config || {});
+    my $default = default_lang($article, $config || {});
+    return 'source' if $lang eq $default;
+
+    my $entry = $article->{langs}{$lang} || {};
+    return 'untranslated' unless _has_content($entry);
+
+    my $state = (($article->{translation_status} || {})->{$lang} || {})->{state} || '';
+    return 'outdated' if $state eq 'outdated';
+    return 'translated';
+}
+
+sub translation_states {
+    my ($article, $config) = @_;
+    $article = normalize($article, $config || {});
+    return {
+        map { $_ => translation_state($article, $_, $config || {}) } supported_langs($config || {})
+    };
+}
+
 sub node_for {
     my ($article, $config) = @_;
     $article ||= {};
@@ -97,6 +119,12 @@ sub _first_text {
         return $value if defined $value && $value ne '';
     }
     return '';
+}
+
+sub _has_content {
+    my ($entry) = @_;
+    return 0 unless ref($entry) eq 'HASH';
+    return grep { defined($entry->{$_}) && $entry->{$_} =~ /\S/ } qw(title description body);
 }
 
 sub _safe_segment {

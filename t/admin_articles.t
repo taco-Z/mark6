@@ -94,6 +94,7 @@ my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'tes
 is($saved_article->{default_lang}, 'ja', 'default language saved');
 is($saved_article->{node}, 'oita360', 'node saved');
 is($saved_article->{slug}, 'beppu-station', 'slug saved');
+is($saved_article->{translation_status}{en}{state}, 'translated', 'newly saved English content is marked translated');
 is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
 is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
 is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default language');
@@ -182,6 +183,58 @@ my $public_en = run_cgi(
 );
 like($public_en, qr/Test article/, 'pretty URL renders English article');
 like($public_en, qr/<p>Body<\/p>/, 'pretty URL renders English body');
+
+my $source_update = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'save',
+        id         => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => $saved_article->{langs}{ja}{title},
+        title_en   => 'Test article',
+        status     => 'published',
+        tags       => 'News, Perl, Travel, Beppu',
+        image      => '',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja    => '<p>Updated source body</p>',
+        description_en => '<p>Summary</p>',
+        body_en    => '<p>Body</p>',
+    ),
+);
+like($source_update, qr/Location: articles\.cgi/, 'source update redirects to article list');
+my $outdated_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($outdated_article->{translation_status}{en}{state}, 'outdated', 'source update marks English translation outdated');
+
+my $translation_update = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'save',
+        id         => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => $saved_article->{langs}{ja}{title},
+        title_en   => 'Updated test article',
+        status     => 'published',
+        tags       => 'News, Perl, Travel, Beppu',
+        image      => '',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja    => '<p>Updated source body</p>',
+        description_en => '<p>Updated summary</p>',
+        body_en    => '<p>Updated English body</p>',
+    ),
+);
+like($translation_update, qr/Location: articles\.cgi/, 'translation update redirects to article list');
+my $translated_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($translated_article->{translation_status}{en}{state}, 'translated', 'updating English content marks it translated');
 
 my $delete = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
