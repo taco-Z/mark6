@@ -95,7 +95,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied#ai-assist');
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied#article-editor');
         exit;
     }
 
@@ -109,7 +109,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=tags_applied#ai-assist');
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=tags_applied#article-editor');
         exit;
     }
 
@@ -222,7 +222,7 @@ sub render_form {
   <h1>$safe_heading</h1>
   $notice
   $error_html
-  <form class="admin-form" method="post" action="articles.cgi">
+  <form id="article-editor" class="admin-form" method="post" action="articles.cgi">
     <input type="hidden" name="command" value="save">
     <input type="hidden" name="id" value="$id">
     <input type="hidden" name="csrf_token" value="$csrf">

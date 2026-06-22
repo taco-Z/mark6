@@ -53,6 +53,7 @@ like($new_form, qr/value="ai_translate"/, 'form renders AI translation action');
 like($new_form, qr/value="ai_rewrite"/, 'form renders AI rewrite action');
 like($new_form, qr/value="ai_seo"/, 'form renders AI SEO diagnosis action');
 like($new_form, qr/id="ai-assist"/, 'form provides an AI action return anchor');
+like($new_form, qr/id="article-editor"/, 'form provides an article editor return anchor');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
@@ -162,7 +163,7 @@ my $tag_apply = run_cgi(
         body_en    => '<p>Body</p>',
     ),
 );
-like($tag_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=tags_applied\#ai-assist/, 'tag action returns to the AI action panel');
+like($tag_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=tags_applied\#article-editor/, 'tag action returns to the article editor');
 my $tag_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is_deeply($tag_article->{tags}, ['News', 'Perl', 'Travel', 'Beppu'], 'tag action preserves existing tags and adds unique AI suggestions');
 
