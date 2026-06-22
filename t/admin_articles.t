@@ -52,6 +52,7 @@ like($new_form, qr/value="ai_draft"/, 'form renders AI body draft action');
 like($new_form, qr/value="ai_translate"/, 'form renders AI translation action');
 like($new_form, qr/value="ai_rewrite"/, 'form renders AI rewrite action');
 like($new_form, qr/value="ai_seo"/, 'form renders AI SEO diagnosis action');
+like($new_form, qr/id="ai-assist"/, 'form provides an AI action return anchor');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
@@ -124,7 +125,7 @@ is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default lan
             body_en    => '<p>Body</p>',
         ),
     );
-    like($ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=done/, 'AI suggestion redirects to edit form');
+like($ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=done\#ai-assist/, 'AI suggestion returns to the AI action panel');
 }
 
 my $ai_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));

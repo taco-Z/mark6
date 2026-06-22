@@ -80,7 +80,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             exit;
         }
         my $notice_action = $command eq 'ai_suggest' ? 'done' : $command;
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action));
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . '#ai-assist');
         exit;
     }
 
@@ -95,7 +95,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied');
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied#ai-assist');
         exit;
     }
 
@@ -468,7 +468,7 @@ sub ai_panel {
     my $seo_meta = ai_result_meta($seo);
 
     return <<"HTML";
-    <fieldset>
+    <fieldset id="ai-assist">
       <legend>$legend</legend>
       <p class="meta">$help</p>
       <div class="admin-toolbar">
