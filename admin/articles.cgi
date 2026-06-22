@@ -69,17 +69,33 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
-    if ($command eq 'ai_suggest') {
+    if ($command =~ /\Aai_(?:suggest|draft|translate|rewrite|seo)\z/) {
         my $article_id = '';
         my $error = run_admin_action(sub {
             $article_id = save_article();
-            suggest_article($article_id);
+            perform_ai_action($article_id, $command);
         });
         if ($error) {
             render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=done');
+        my $notice_action = $command eq 'ai_suggest' ? 'done' : $command;
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action));
+        exit;
+    }
+
+    if ($command =~ /\Aai_apply_(draft|rewrite|translation)\z/) {
+        my $action = $1;
+        my $article_id = '';
+        my $error = run_admin_action(sub {
+            $article_id = save_article();
+            apply_ai_result($article_id, $action);
+        });
+        if ($error) {
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied');
         exit;
     }
 
@@ -183,7 +199,7 @@ sub render_form {
     my $no_image_label = h($lang->t('admin.article.no_image', 'No image'));
     my $image_path_label = h($lang->t('admin.article.image_path', 'Image path'));
     my $save_label = h($lang->t('admin.common.save', 'Save'));
-    my $notice = ($params{ai} || '') eq 'done' ? '<p class="notice">' . h($lang->t('admin.ai.done', 'AI suggestions were generated.')) . '</p>' : '';
+    my $notice = ai_notice($params{ai} || '');
     my $error_html = $error ? qq|<p class="error">$error</p>| : '';
 
     render_page($heading, <<"HTML");
@@ -271,14 +287,77 @@ sub save_article {
     return "$id";
 }
 
-sub suggest_article {
-    my ($id) = @_;
+sub perform_ai_action {
+    my ($id, $command) = @_;
     die $lang->t('admin.ai.disabled_error', 'AI assist is disabled.') unless $config->{features}{ai};
 
     my $article = load_article($id) or die "Article not found";
     Mark6::Article::normalize($article, $config);
     my $assistant = Mark6::AI->new(config => $config);
-    $article->{ai} = $assistant->suggest_article(article => $article);
+    $article->{ai} ||= {};
+    my $default_lang = Mark6::Article::default_lang($article, $config);
+
+    if ($command eq 'ai_suggest') {
+        $article->{ai} = { %{$article->{ai}}, %{$assistant->suggest_article(article => $article)} };
+    }
+    elsif ($command eq 'ai_draft') {
+        $article->{ai}{draft} = $assistant->draft_body(article => $article, lang => $default_lang);
+    }
+    elsif ($command eq 'ai_translate') {
+        my $target_lang = normalize_lang($params{ai_target_lang} || '');
+        die "Choose a translation language different from the default language" if $target_lang eq $default_lang;
+        $article->{ai}{translations} ||= {};
+        $article->{ai}{translations}{$target_lang} = $assistant->translate_article(
+            article     => $article,
+            source_lang => $default_lang,
+            target_lang => $target_lang,
+        );
+    }
+    elsif ($command eq 'ai_rewrite') {
+        $article->{ai}{rewrite} = $assistant->rewrite_body(article => $article, lang => $default_lang);
+    }
+    elsif ($command eq 'ai_seo') {
+        $article->{ai}{seo} = $assistant->diagnose_seo(article => $article);
+    }
+    else {
+        die "Unknown AI action";
+    }
+
+    my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
+    die "Article JSON was not updated at $path" unless -e $path;
+}
+
+sub apply_ai_result {
+    my ($id, $action) = @_;
+    my $article = load_article($id) or die "Article not found";
+    Mark6::Article::normalize($article, $config);
+    my $ai = $article->{ai} || {};
+    my $default_lang = Mark6::Article::default_lang($article, $config);
+
+    if ($action eq 'draft' || $action eq 'rewrite') {
+        my $result = $ai->{$action} || {};
+        die "No AI $action result is available" unless ($result->{body} || '') ne '';
+        $article->{langs}{$default_lang}{body} = $result->{body};
+    }
+    elsif ($action eq 'translation') {
+        my $target_lang = normalize_lang($params{ai_target_lang} || '');
+        my $result = ($ai->{translations} || {})->{$target_lang} || {};
+        die "No AI translation result is available" unless ($result->{body} || '') ne '' || ($result->{title} || '') ne '';
+        $article->{langs}{$target_lang} = {
+            title       => $result->{title} || '',
+            description => $result->{description} || '',
+            body        => $result->{body} || '',
+        };
+    }
+    else {
+        die "Unknown AI result";
+    }
+
+    my $default = $article->{langs}{$default_lang} || {};
+    $article->{title} = $default->{title} || 'Untitled';
+    $article->{intro} = $default->{description} || '';
+    $article->{body} = $default->{body} || '';
+    $article->{updated_at} = iso_now();
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
     die "Article JSON was not updated at $path" unless -e $path;
 }
@@ -361,30 +440,120 @@ sub ai_panel {
     return '' unless $config->{features}{ai};
 
     my $ai = $article->{ai} || {};
-    my $summary = h($ai->{summary} || '');
-    my $seo = h($ai->{seo_description} || '');
-    my $tags = h(join(', ', @{$ai->{suggested_tags} || []}));
-    my $processed = h($ai->{last_processed_at} || '');
     my $legend = h($lang->t('admin.ai.legend', 'AI assist'));
-    my $summary_label = h($lang->t('admin.ai.summary', 'Summary'));
-    my $seo_label = h($lang->t('admin.ai.seo_description', 'SEO description'));
-    my $tags_label = h($lang->t('admin.ai.suggested_tags', 'Suggested tags'));
-    my $processed_label = h($lang->t('admin.ai.last_processed_at', 'Last processed'));
-    my $button_label = h($lang->t('admin.ai.generate', 'Generate AI suggestions'));
-    my $help = h($lang->t('admin.ai.help', 'Save the article and generate summary, SEO description, and tag suggestions.'));
-    my $processed_html = $processed ne '' ? qq|<div class="meta">$processed_label: $processed</div>| : '';
+    my $help = h($lang->t('admin.ai.help', 'The article is saved before each AI action. Review a generated result before applying it.'));
+    my $draft_label = h($lang->t('admin.ai.draft', 'Body draft'));
+    my $translate_label = h($lang->t('admin.ai.translate', 'Translate'));
+    my $rewrite_label = h($lang->t('admin.ai.rewrite', 'Rewrite'));
+    my $seo_label = h($lang->t('admin.ai.seo', 'SEO diagnosis'));
+    my $apply_label = h($lang->t('admin.ai.apply', 'Apply to article'));
+    my $target_label = h($lang->t('admin.ai.target_lang', 'Translation language'));
+    my $draft = $ai->{draft} || {};
+    my $rewrite = $ai->{rewrite} || {};
+    my $target_lang = ai_target_lang($article);
+    my $translation = ($ai->{translations} || {})->{$target_lang} || {};
+    my $seo = $ai->{seo} || {};
+    my $draft_body = h($draft->{body} || '');
+    my $rewrite_body = h($rewrite->{body} || '');
+    my $translation_title = h($translation->{title} || '');
+    my $translation_description = h($translation->{description} || '');
+    my $translation_body = h($translation->{body} || '');
+    my $seo_description = h($seo->{seo_description} || '');
+    my $seo_tags = h(join(', ', @{$seo->{suggested_tags} || []}));
+    my $seo_diagnosis = h($seo->{diagnosis} || '');
+    my $target_options = ai_target_options($article, $target_lang);
+    my $draft_meta = ai_result_meta($draft);
+    my $rewrite_meta = ai_result_meta($rewrite);
+    my $translation_meta = ai_result_meta($translation);
+    my $seo_meta = ai_result_meta($seo);
 
     return <<"HTML";
     <fieldset>
       <legend>$legend</legend>
       <p class="meta">$help</p>
-      <label>$summary_label<br><textarea rows="3" readonly>$summary</textarea></label>
-      <label>$seo_label<br><textarea rows="3" readonly>$seo</textarea></label>
-      <label>$tags_label<br><input type="text" value="$tags" readonly onclick="this.select()"></label>
-      $processed_html
-      <button type="submit" name="command" value="ai_suggest">$button_label</button>
+      <div class="admin-toolbar">
+        <button type="submit" name="command" value="ai_draft">$draft_label</button>
+        <button type="submit" name="command" value="ai_rewrite">$rewrite_label</button>
+        <button type="submit" name="command" value="ai_seo">$seo_label</button>
+      </div>
+      <label>$target_label<br>
+        <select name="ai_target_lang">$target_options</select>
+      </label>
+      <button type="submit" name="command" value="ai_translate">$translate_label</button>
+      <fieldset>
+        <legend>$draft_label</legend>
+        <textarea rows="8" readonly>$draft_body</textarea>
+        $draft_meta
+        <button type="submit" name="command" value="ai_apply_draft">$apply_label</button>
+      </fieldset>
+      <fieldset>
+        <legend>$rewrite_label</legend>
+        <textarea rows="8" readonly>$rewrite_body</textarea>
+        $rewrite_meta
+        <button type="submit" name="command" value="ai_apply_rewrite">$apply_label</button>
+      </fieldset>
+      <fieldset>
+        <legend>$translate_label</legend>
+        <label>Title<br><input type="text" value="$translation_title" readonly></label>
+        <label>Description HTML<br><textarea rows="4" readonly>$translation_description</textarea></label>
+        <label>Body HTML<br><textarea rows="8" readonly>$translation_body</textarea></label>
+        $translation_meta
+        <button type="submit" name="command" value="ai_apply_translation">$apply_label</button>
+      </fieldset>
+      <fieldset>
+        <legend>$seo_label</legend>
+        <label>SEO description<br><textarea rows="3" readonly>$seo_description</textarea></label>
+        <label>Suggested tags<br><input type="text" value="$seo_tags" readonly onclick="this.select()"></label>
+        <label>Diagnosis<br><textarea rows="4" readonly>$seo_diagnosis</textarea></label>
+        $seo_meta
+      </fieldset>
     </fieldset>
 HTML
+}
+
+sub ai_result_meta {
+    my ($result) = @_;
+    return '' unless ($result->{last_processed_at} || '') ne '';
+    my $processed_label = h($lang->t('admin.ai.last_processed_at', 'Last processed'));
+    return qq|<div class="meta">$processed_label: | . h($result->{last_processed_at}) . q|</div>|;
+}
+
+sub ai_target_lang {
+    my ($article) = @_;
+    my $default = Mark6::Article::default_lang($article, $config);
+    my $requested = normalize_lang($params{ai_target_lang} || '');
+    return $requested if $requested ne $default;
+    for my $candidate (@article_langs) {
+        return $candidate if $candidate ne $default;
+    }
+    return $default;
+}
+
+sub ai_target_options {
+    my ($article, $selected) = @_;
+    my $default = Mark6::Article::default_lang($article, $config);
+    my @options;
+    for my $code (@article_langs) {
+        next if $code eq $default;
+        my $is_selected = $code eq $selected ? 'selected' : '';
+        push @options, qq|<option value="$code" $is_selected>| . uc($code) . q|</option>|;
+    }
+    return join "\n", @options;
+}
+
+sub ai_notice {
+    my ($action) = @_;
+    return '' if $action eq '';
+    my %keys = (
+        ai_draft     => 'admin.ai.draft_done',
+        ai_translate => 'admin.ai.translate_done',
+        ai_rewrite   => 'admin.ai.rewrite_done',
+        ai_seo       => 'admin.ai.seo_done',
+        ai_suggest   => 'admin.ai.done',
+        applied      => 'admin.ai.applied',
+    );
+    my $fallback = $action eq 'applied' ? 'AI result was applied to the article.' : 'AI result was generated.';
+    return '<p class="notice">' . h($lang->t($keys{$action} || 'admin.ai.done', $fallback)) . '</p>';
 }
 
 sub default_lang_options {

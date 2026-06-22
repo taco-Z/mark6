@@ -37,4 +37,43 @@ use Mark6::AI;
     is_deeply($result->{suggested_tags}, ['別府', '観光'], 'keeps Japanese tag strings');
 }
 
+my $article = {
+    default_lang => 'ja',
+    node => 'oita360',
+    slug => 'beppu-station',
+    langs => {
+        ja => { title => 'Beppu Station', description => '<p>Gateway to Beppu.</p>', body => '<p>Source body.</p>' },
+        en => { title => '', description => '', body => '' },
+    },
+};
+my $assistant = Mark6::AI->new(config => { ai => { model => 'test-model' } });
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = '{"body":"<p>Draft body.</p>"}';
+    my $result = $assistant->draft_body(article => $article, lang => 'ja');
+    is($result->{body}, '<p>Draft body.</p>', 'generates a body draft result');
+    is($result->{model}, 'test-model', 'records the draft model');
+}
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = '{"title":"Beppu Station","description":"<p>English description.</p>","body":"<p>English body.</p>"}';
+    my $result = $assistant->translate_article(article => $article, source_lang => 'ja', target_lang => 'en');
+    is($result->{title}, 'Beppu Station', 'generates a translation title');
+    is($result->{target_lang}, 'en', 'records the translation target language');
+}
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = '{"body":"<p>Rewritten body.</p>"}';
+    my $result = $assistant->rewrite_body(article => $article, lang => 'ja');
+    is($result->{body}, '<p>Rewritten body.</p>', 'generates a rewritten body result');
+}
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = '{"seo_description":"SEO description.","suggested_tags":["Travel","Beppu"],"diagnosis":"Add a clearer heading."}';
+    my $result = $assistant->diagnose_seo(article => $article);
+    is($result->{seo_description}, 'SEO description.', 'generates an SEO description');
+    is($result->{diagnosis}, 'Add a clearer heading.', 'generates an SEO diagnosis');
+    is_deeply($result->{suggested_tags}, ['Travel', 'Beppu'], 'generates SEO tag suggestions');
+}
+
 done_testing;

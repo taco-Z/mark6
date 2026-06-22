@@ -48,6 +48,10 @@ my $new_form = run_cgi(
 like($new_form, qr/新規記事/, 'new article form renders');
 like($new_form, qr/name="title_ja"/, 'form renders Japanese title field');
 like($new_form, qr/name="title_en"/, 'form renders English title field');
+like($new_form, qr/value="ai_draft"/, 'form renders AI body draft action');
+like($new_form, qr/value="ai_translate"/, 'form renders AI translation action');
+like($new_form, qr/value="ai_rewrite"/, 'form renders AI rewrite action');
+like($new_form, qr/value="ai_seo"/, 'form renders AI SEO diagnosis action');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 

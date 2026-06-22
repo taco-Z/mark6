@@ -22,17 +22,105 @@ sub new {
 
 sub suggest_article {
     my ($self, %args) = @_;
-    my $article = $args{article} || {};
-    my $mock = $ENV{MARK6_AI_MOCK_RESPONSE};
-    my $result = defined $mock && $mock ne ''
-        ? decode_json($mock)
-        : $self->_suggest_article_openai($article);
-
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You are an editorial assistant for a lightweight CMS.',
+            'Return only one JSON object.',
+            'The JSON object must have: summary, seo_description, suggested_tags.',
+            'summary and seo_description must be concise plain text.',
+            'suggested_tags must be an array of short tag strings.',
+        ),
+        prompt => article_prompt($args{article} || {}),
+    );
     return _normalize_result($result, $self->{provider}, $self->{model});
 }
 
-sub _suggest_article_openai {
-    my ($self, $article) = @_;
+sub draft_body {
+    my ($self, %args) = @_;
+    my $lang = $args{lang} || 'ja';
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You write a first draft of an article body for a lightweight CMS.',
+            "Write in language code: $lang.",
+            'Return only one JSON object with a body property.',
+            'body must be an HTML fragment using simple semantic tags such as p, h2, ul, li, strong, and a.',
+            'Do not include html, head, body, markdown fences, or an explanation.',
+        ),
+        prompt => article_prompt($args{article} || {}),
+    );
+    return _normalize_body_result($result, $self->{provider}, $self->{model});
+}
+
+sub translate_article {
+    my ($self, %args) = @_;
+    my $source_lang = $args{source_lang} || 'ja';
+    my $target_lang = $args{target_lang} || 'en';
+    my $article = $args{article} || {};
+    my $source = ($article->{langs} || {})->{$source_lang} || {};
+    my $prompt = join("\n\n",
+        "Translate this article from $source_lang to $target_lang.",
+        "Title:\n" . ($source->{title} || ''),
+        "Description HTML:\n" . ($source->{description} || ''),
+        "Body HTML:\n" . ($source->{body} || ''),
+    );
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You are a careful website translator.',
+            "Translate into language code: $target_lang.",
+            'Return only one JSON object with title, description, and body.',
+            'title is plain text. description and body are HTML fragments.',
+            'Preserve links, factual details, and the HTML structure where possible.',
+            'Do not include markdown fences or an explanation.',
+        ),
+        prompt => $prompt,
+    );
+    return _normalize_translation_result($result, $self->{provider}, $self->{model}, $source_lang, $target_lang);
+}
+
+sub rewrite_body {
+    my ($self, %args) = @_;
+    my $lang = $args{lang} || 'ja';
+    my $article = $args{article} || {};
+    my $entry = ($article->{langs} || {})->{$lang} || {};
+    my $prompt = join("\n\n",
+        'Rewrite this existing article body for clarity, readability, and useful structure. Keep its facts and intent.',
+        "Title:\n" . ($entry->{title} || ''),
+        "Description HTML:\n" . ($entry->{description} || ''),
+        "Body HTML:\n" . ($entry->{body} || ''),
+    );
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You are a careful website editor.',
+            "Write in language code: $lang.",
+            'Return only one JSON object with a body property.',
+            'body must be an HTML fragment. Preserve factual claims and links unless the source is clearly malformed.',
+            'Do not include markdown fences or an explanation.',
+        ),
+        prompt => $prompt,
+    );
+    return _normalize_body_result($result, $self->{provider}, $self->{model});
+}
+
+sub diagnose_seo {
+    my ($self, %args) = @_;
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You are an SEO editor for a website article.',
+            'Return only one JSON object with seo_description, suggested_tags, and diagnosis.',
+            'seo_description and diagnosis must be concise plain text.',
+            'suggested_tags must be an array of short tag strings.',
+            'diagnosis must mention only concrete improvements grounded in the supplied article.',
+        ),
+        prompt => article_prompt($args{article} || {}),
+    );
+    return _normalize_seo_result($result, $self->{provider}, $self->{model});
+}
+
+sub _request_json {
+    my ($self, %args) = @_;
+    my $mock = $ENV{MARK6_AI_MOCK_RESPONSE};
+    return decode_json($mock) if defined $mock && $mock ne '';
+
     die "Unsupported AI provider: $self->{provider}" unless $self->{provider} eq 'openai';
 
     my $api_key = _env_value($self->{api_key_env}) || _file_value($self->{api_key_file});
@@ -43,17 +131,11 @@ sub _suggest_article_openai {
         input => [
             {
                 role => 'system',
-                content => join("\n",
-                    'You are an editorial assistant for a lightweight CMS.',
-                    'Return only one JSON object.',
-                    'The JSON object must have: summary, seo_description, suggested_tags.',
-                    'summary and seo_description must be concise plain text.',
-                    'suggested_tags must be an array of short tag strings.',
-                ),
+                content => $args{system},
             },
             {
                 role => 'user',
-                content => article_prompt($article),
+                content => $args{prompt},
             },
         ],
     });
@@ -187,6 +269,37 @@ sub _normalize_result {
     };
 }
 
+sub _normalize_body_result {
+    my ($result, $provider, $model) = @_;
+    return {
+        body              => _clean_html($result->{body} || ''),
+        provider          => $provider,
+        model             => $model,
+        last_processed_at => _iso_now(),
+    };
+}
+
+sub _normalize_translation_result {
+    my ($result, $provider, $model, $source_lang, $target_lang) = @_;
+    return {
+        title             => _clean_text($result->{title} || ''),
+        description       => _clean_html($result->{description} || ''),
+        body              => _clean_html($result->{body} || ''),
+        source_lang       => $source_lang,
+        target_lang       => $target_lang,
+        provider          => $provider,
+        model             => $model,
+        last_processed_at => _iso_now(),
+    };
+}
+
+sub _normalize_seo_result {
+    my ($result, $provider, $model) = @_;
+    my $base = _normalize_result($result, $provider, $model);
+    $base->{diagnosis} = _clean_text($result->{diagnosis} || '');
+    return $base;
+}
+
 sub _strip_html {
     my ($value) = @_;
     $value =~ s/<[^>]+>/ /g;
@@ -203,6 +316,13 @@ sub _clean_text {
     my ($value) = @_;
     $value =~ s/\r?\n/ /g;
     $value =~ s/\s+/ /g;
+    $value =~ s/^\s+|\s+$//g;
+    return $value;
+}
+
+sub _clean_html {
+    my ($value) = @_;
+    $value = '' unless defined $value;
     $value =~ s/^\s+|\s+$//g;
     return $value;
 }
