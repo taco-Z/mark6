@@ -135,6 +135,37 @@ is_deeply($ai_article->{ai}{suggested_tags}, ['Beppu', 'Station', 'Travel'], 'AI
 is($ai_article->{ai}{model}, 'test-model', 'AI model saved');
 like($ai_article->{ai}{last_processed_at}, qr/\A\d{4}-\d{2}-\d{2}T/, 'AI timestamp saved');
 
+$ai_article->{ai}{seo} = {
+    suggested_tags => ['Perl', 'Travel', 'travel', 'Beppu'],
+};
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'), $ai_article);
+
+my $tag_apply = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'ai_apply_tags',
+        id         => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => $saved_article->{langs}{ja}{title},
+        title_en   => 'Test article',
+        status     => 'published',
+        tags       => 'News, Perl',
+        image      => '',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja    => $saved_article->{langs}{ja}{body},
+        description_en => '<p>Summary</p>',
+        body_en    => '<p>Body</p>',
+    ),
+);
+like($tag_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=tags_applied\#ai-assist/, 'tag action returns to the AI action panel');
+my $tag_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is_deeply($tag_article->{tags}, ['News', 'Perl', 'Travel', 'Beppu'], 'tag action preserves existing tags and adds unique AI suggestions');
+
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
     method => 'GET',

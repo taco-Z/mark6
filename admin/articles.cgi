@@ -99,6 +99,20 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
+    if ($command eq 'ai_apply_tags') {
+        my $article_id = '';
+        my $error = run_admin_action(sub {
+            $article_id = save_article();
+            apply_ai_tags($article_id);
+        });
+        if ($error) {
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=tags_applied#ai-assist');
+        exit;
+    }
+
     if ($command eq 'delete') {
         my $error = run_admin_action(sub { delete_article($params{id} || '') });
         if ($error) {
@@ -369,6 +383,29 @@ sub apply_ai_result {
     die "Article JSON was not updated at $path" unless -e $path;
 }
 
+sub apply_ai_tags {
+    my ($id) = @_;
+    my $article = load_article($id) or die "Article not found";
+    my $suggested = (($article->{ai} || {})->{seo} || {})->{suggested_tags};
+    die "No AI tag suggestions are available" unless ref($suggested) eq 'ARRAY' && @{$suggested};
+
+    my %seen;
+    my @merged;
+    for my $tag (@{$article->{tags} || []}, @{$suggested}) {
+        next unless defined $tag;
+        $tag =~ s/^\s+|\s+$//g;
+        next if $tag eq '';
+        my $key = lc $tag;
+        next if $seen{$key}++;
+        push @merged, $tag;
+    }
+
+    $article->{tags} = \@merged;
+    $article->{updated_at} = iso_now();
+    my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
+    die "Article JSON was not updated at $path" unless -e $path;
+}
+
 sub delete_article {
     my ($id) = @_;
     return unless $id =~ /\A[0-9A-Za-z_-]+\z/;
@@ -454,6 +491,7 @@ sub ai_panel {
     my $rewrite_label = h($lang->t('admin.ai.rewrite', 'Rewrite'));
     my $seo_label = h($lang->t('admin.ai.seo', 'SEO diagnosis'));
     my $seo_rewrite_label = h($lang->t('admin.ai.seo_rewrite', 'SEO rewrite'));
+    my $tag_add_label = h($lang->t('admin.ai.add_tags', 'Add suggested tags'));
     my $apply_label = h($lang->t('admin.ai.apply', 'Apply to article'));
     my $target_label = h($lang->t('admin.ai.target_lang', 'Translation language'));
     my $draft = $ai->{draft} || {};
@@ -479,6 +517,7 @@ sub ai_panel {
     my $seo_meta = ai_result_meta($seo);
     my $has_seo = ($seo->{last_processed_at} || '') ne '' || ($seo->{diagnosis} || '') ne '' || ($seo->{seo_description} || '') ne '' || @{$seo->{suggested_tags} || []};
     my $seo_rewrite_action = $has_seo ? qq|<button type="submit" name="command" value="ai_seo_rewrite">$seo_rewrite_label</button>| : '';
+    my $seo_tag_action = @{$seo->{suggested_tags} || []} ? qq|<button type="submit" name="command" value="ai_apply_tags">$tag_add_label</button>| : '';
     my $seo_rewrite_panel = $has_seo ? <<"HTML" : '';
       <fieldset>
         <legend>$seo_rewrite_label</legend>
@@ -528,6 +567,7 @@ HTML
         <label>Diagnosis<br><textarea rows="4" readonly>$seo_diagnosis</textarea></label>
         $seo_meta
         $seo_rewrite_action
+        $seo_tag_action
       </fieldset>
       $seo_rewrite_panel
     </fieldset>
@@ -573,6 +613,7 @@ sub ai_notice {
         ai_rewrite   => 'admin.ai.rewrite_done',
         ai_seo       => 'admin.ai.seo_done',
         ai_seo_rewrite => 'admin.ai.seo_rewrite_done',
+        tags_applied => 'admin.ai.tags_applied',
         ai_suggest   => 'admin.ai.done',
         applied      => 'admin.ai.applied',
     );
