@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+use utf8;
 use Test::More;
 use File::Path qw(make_path remove_tree);
 use File::Spec;

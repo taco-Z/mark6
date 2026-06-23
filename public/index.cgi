@@ -2,6 +2,7 @@
 
 use strict;
 use warnings;
+use utf8;
 use FindBin;
 use Cwd qw(abs_path getcwd);
 use Encode qw(decode encode);
