@@ -24,21 +24,20 @@ sub render_page {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$safe_title - MARK6 $admin_title</title>
-  <link rel="icon" href="../public/assets/img/mark6-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="../public/assets/css/mark6.css">
+  <link rel="icon" href="../public/assets/img/mark6-icon.svg?v=2" type="image/svg+xml">
+  <link rel="stylesheet" href="../public/assets/css/mark6.css?v=2">
 </head>
 <body>
   <header class="site-header admin-header">
     <a class="admin-brand" href="index.cgi">
-      <img src="../public/assets/img/mark6-logo-light.svg" alt="MARK6">
+      <img src="../public/assets/img/mark6-logo-light.svg?v=2" alt="MARK6">
       <span>$admin_label</span>
     </a>
     $nav
   </header>
   <main class="site-main admin-main">$content</main>
   <footer class="admin-footer">
-    <img src="../public/assets/img/mark6-logo-light.svg" alt="MARK6">
-    <span>TurboWorks CMS</span>
+    <img src="../public/assets/img/mark6-logo-light.svg?v=2" alt="MARK6">
   </footer>
 </body>
 </html>

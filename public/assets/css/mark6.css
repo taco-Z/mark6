@@ -135,6 +135,27 @@ img {
 
 .admin-main {
   width: min(1080px, calc(100% - 32px));
+  position: relative;
+  min-height: 620px;
+  isolation: isolate;
+}
+
+.admin-main > * {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-main::before {
+  position: fixed;
+  right: clamp(24px, 6vw, 96px);
+  bottom: 70px;
+  z-index: 0;
+  width: min(54vw, 660px);
+  aspect-ratio: 460 / 96;
+  background: url("../img/mark6-logo.svg?v=2") center / contain no-repeat;
+  content: "";
+  opacity: .045;
+  pointer-events: none;
 }
 
 .admin-main h1 {
@@ -280,6 +301,7 @@ button:hover,
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-bottom: 34px;
 }
 
 .admin-menu .button:first-child,
@@ -289,14 +311,18 @@ button:hover,
 }
 
 .dashboard-stats {
-  margin-top: 30px;
+  margin-top: 36px;
   padding-top: 22px;
   border-top: 1px solid var(--line);
 }
 
 .dashboard-stats h2 {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   font-size: 1rem;
+}
+
+.dashboard-stats .stats-grid {
+  margin-bottom: 34px;
 }
 
 .stats-grid {
@@ -472,7 +498,7 @@ button:hover,
 .admin-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 18px;
   padding: 16px clamp(18px, 4vw, 48px);
   border-top: 1px solid #2a3034;
@@ -487,6 +513,16 @@ button:hover,
 }
 
 @media (max-width: 640px) {
+  .admin-main {
+    min-height: 520px;
+  }
+
+  .admin-main::before {
+    right: 16px;
+    bottom: 42px;
+    width: min(92vw, 560px);
+  }
+
   .site-header {
     align-items: flex-start;
     flex-direction: column;

@@ -511,9 +511,9 @@ sub render_page {
     my $language_links = render_language_links();
     my $home_href = escape_attr(lang_url($current_lang));
     my $articles_href = escape_attr(article_list_url());
-    my $css_href = escape_attr(asset_url('css/mark6.css'));
-    my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg'));
-    my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg'));
+    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=2');
+    my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
+    my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
     my $lang_cookie = lang_cookie_header();
     my $safe_page_description = escape_attr($page_description || '');
     my $safe_canonical_url = escape_attr($canonical_url || '');
