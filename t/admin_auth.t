@@ -41,6 +41,8 @@ my $dashboard = run_cgi(
 like($dashboard, qr/ダッシュボード/, 'dashboard renders');
 like($dashboard, qr/ログイン中: <strong>admin<\/strong> \(master\)/, 'dashboard identifies user');
 
+like($dashboard, qr/class="dashboard-stats"/, 'dashboard renders access summary');
+
 my $logout = run_cgi(
     script => File::Spec->catfile('admin', 'logout.cgi'),
     method => 'GET',

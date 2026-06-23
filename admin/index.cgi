@@ -26,6 +26,7 @@ use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::Lang;
 use Mark6::Root;
+use Mark6::Stats;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
 my $auth = Mark6::Auth->new(root => $ROOT);
@@ -57,6 +58,21 @@ my $edit_home = Mark6::CGI::escape_html($lang->t('admin.dashboard.edit_home', 'E
 my $manage_articles = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_articles', 'Manage Articles'));
 my $manage_media = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_media', 'Manage Media'));
 my $site_settings = Mark6::CGI::escape_html($lang->t('admin.dashboard.site_settings', 'Site Settings'));
+my $stats = Mark6::Stats->new(root => $ROOT)->access_summary();
+my $access_title = Mark6::CGI::escape_html($lang->t('admin.dashboard.access_title', 'Access overview'));
+my $today_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.today_views', 'Today'));
+my $week_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.week_views', 'Last 7 days'));
+my $total_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.logged_views', 'Logged views'));
+my $popular_title = Mark6::CGI::escape_html($lang->t('admin.dashboard.popular_articles', 'Popular articles'));
+my $no_popular = Mark6::CGI::escape_html($lang->t('admin.dashboard.no_access_data', 'No access data yet.'));
+my $views_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.views', 'views'));
+my $popular_rows = @{$stats->{popular} || []}
+    ? join("\n", map {
+        my $title = Mark6::CGI::escape_html($_->{title} || $_->{id});
+        my $views = Mark6::CGI::escape_html($_->{views} || 0);
+        qq|<li><span>$title</span><strong>$views $views_label</strong></li>|;
+    } @{$stats->{popular}})
+    : qq|<li class="empty">$no_popular</li>|;
 
 Mark6::Admin::render_page(
     title => $dashboard_title,
@@ -73,6 +89,16 @@ Mark6::Admin::render_page(
         <a class="button secondary" href="media.cgi">$manage_media</a>
         <a class="button secondary" href="settings.cgi">$site_settings</a>
       </div>
+      <section class="dashboard-stats">
+        <h2>$access_title</h2>
+        <div class="stats-grid">
+          <div class="stat"><span>$today_label</span><strong>@{[$stats->{today_views} || 0]}</strong></div>
+          <div class="stat"><span>$week_label</span><strong>@{[$stats->{week_views} || 0]}</strong></div>
+          <div class="stat"><span>$total_label</span><strong>@{[$stats->{total_views} || 0]}</strong></div>
+        </div>
+        <h2>$popular_title</h2>
+        <ul class="popular-list">$popular_rows</ul>
+      </section>
 </section>
 HTML
 );

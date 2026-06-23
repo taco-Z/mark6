@@ -40,6 +40,16 @@ my $route = parse_route($request_path, \@supported_langs, $config);
 my $current_lang = current_lang($config, \@supported_langs, $route);
 my $order  = $in{order} || 'index';
 
+if ($request_path eq 'robots.txt') {
+    print encode('UTF-8', render_robots());
+    exit;
+}
+
+if ($request_path eq 'sitemap.xml') {
+    print encode('UTF-8', render_sitemap());
+    exit;
+}
+
 if (should_redirect_root($request_path, $route)) {
     my $initial_lang = initial_lang(\@supported_langs);
     redirect_to(lang_url($initial_lang));
@@ -50,12 +60,16 @@ my $site_title = value_at($config, 'site', 'title') || 'MARK6';
 my $content;
 my $page_title = $site_title;
 my $page_description = '';
+my $canonical_url = '';
+my $access_article;
 
 if ($route->{type} eq 'article') {
     my $article = find_article_by_slug($route->{node}, $route->{slug});
     if ($article) {
         $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
         $page_description = article_meta_description($article);
+        $canonical_url = site_absolute_url(article_url($article, $current_lang));
+        $access_article = $article;
         $content = render_article_detail($article);
     }
     else {
@@ -71,6 +85,8 @@ elsif ($order eq 'focus') {
     if ($article) {
         $page_title = Mark6::Article::title_for($article, $current_lang, $config) . " - $site_title";
         $page_description = article_meta_description($article);
+        $canonical_url = site_absolute_url(article_url($article, $current_lang));
+        $access_article = $article;
         $content = render_article_detail($article);
     }
     else {
@@ -87,7 +103,9 @@ else {
     $content = render_home($home, \@articles);
 }
 
-print encode('UTF-8', render_page($page_title, $site_title, $content, $page_description));
+$canonical_url ||= canonical_url($route);
+log_access($route, $access_article);
+print encode('UTF-8', render_page($page_title, $site_title, $content, $page_description, $canonical_url, $access_article));
 
 sub parse_query {
     my $query = $ENV{QUERY_STRING} || '';
@@ -410,6 +428,72 @@ sub render_not_found {
 HTML
 }
 
+sub render_robots {
+    my $sitemap = site_absolute_url(site_url('sitemap.xml'));
+    return "Content-Type: text/plain; charset=UTF-8\n\nUser-agent: *\nAllow: /\nSitemap: $sitemap\n";
+}
+
+sub render_sitemap {
+    my @urls;
+    for my $lang (@supported_langs) {
+        push @urls, { loc => site_absolute_url(lang_url($lang)), lastmod => '' };
+    }
+    for my $article (load_articles()) {
+        my $lastmod = format_date($article->{updated_at} || $article->{created_at} || '');
+        for my $lang (@supported_langs) {
+            push @urls, {
+                loc => site_absolute_url(article_url($article, $lang)),
+                lastmod => $lastmod,
+            };
+        }
+    }
+
+    my $items = join '', map {
+        my $lastmod = $_->{lastmod} ne '' ? '<lastmod>' . xml_escape($_->{lastmod}) . '</lastmod>' : '';
+        '<url><loc>' . xml_escape($_->{loc}) . '</loc>' . $lastmod . '</url>' . "\n";
+    } @urls;
+    return "Content-Type: application/xml; charset=UTF-8\n\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n$items</urlset>\n";
+}
+
+sub canonical_url {
+    my ($route) = @_;
+    if (($route->{type} || '') eq 'node') {
+        return site_absolute_url(site_url("$current_lang/$route->{node}/"));
+    }
+    if ($order eq 'article' && defined $in{tag} && $in{tag} ne '') {
+        return site_absolute_url(article_list_url('tag=' . url_encode($in{tag})));
+    }
+    return site_absolute_url(lang_url($current_lang));
+}
+
+sub site_absolute_url {
+    my ($url) = @_;
+    return $url if $url =~ m{\Ahttps?://}i;
+    my $host = $ENV{HTTP_HOST} || 'localhost';
+    my $scheme = ($ENV{HTTPS} || '') =~ /\A(?:on|1)\z/i ? 'https' : 'http';
+    $url = "/$url" unless $url =~ m{\A/};
+    return "$scheme://$host$url";
+}
+
+sub log_access {
+    my ($route, $article) = @_;
+    return if $ENV{MARK6_DISABLE_ACCESS_LOG};
+
+    my @t = gmtime(time);
+    my $iso = sprintf('%04d-%02d-%02dT%02d:%02d:%02dZ',
+        $t[5] + 1900, $t[4] + 1, $t[3], $t[2], $t[1], $t[0]);
+    my $event = {
+        kind          => 'page',
+        at            => $iso,
+        day           => substr($iso, 0, 10),
+        lang          => $current_lang,
+        route          => $route->{type} || 'index',
+        article_id    => $article ? ($article->{id} || '') : '',
+        article_title => $article ? Mark6::Article::title_for($article, $current_lang, $config) : '',
+    };
+    eval { $store->append_jsonl($event, 'dat', 'logs', 'access.jsonl'); 1 };
+}
+
 sub article_meta_description {
     my ($article) = @_;
     my $seo = (($article->{ai} || {})->{seo} || {});
@@ -421,7 +505,7 @@ sub article_meta_description {
 }
 
 sub render_page {
-    my ($page_title, $site_title, $content, $page_description) = @_;
+    my ($page_title, $site_title, $content, $page_description, $canonical_url, $article) = @_;
     my $safe_page_title = escape_html($page_title);
     my $safe_site_title = escape_html($site_title);
     my $language_links = render_language_links();
@@ -430,9 +514,20 @@ sub render_page {
     my $css_href = escape_attr(asset_url('css/mark6.css'));
     my $lang_cookie = lang_cookie_header();
     my $safe_page_description = escape_attr($page_description || '');
+    my $safe_canonical_url = escape_attr($canonical_url || '');
     my $description_meta = $page_description ne ''
         ? qq|  <meta name="description" content="$safe_page_description">\n|
         : '';
+    my $canonical_meta = $canonical_url ne '' ? qq|  <link rel="canonical" href="$safe_canonical_url">\n| : '';
+    my $og_type = $article ? 'article' : 'website';
+    my $og_meta = qq|  <meta property="og:type" content="$og_type">\n| .
+        qq|  <meta property="og:title" content="@{[escape_attr($page_title)]}">\n| .
+        ($page_description ne '' ? qq|  <meta property="og:description" content="$safe_page_description">\n| : '') .
+        ($canonical_url ne '' ? qq|  <meta property="og:url" content="$safe_canonical_url">\n| : '');
+    if ($article && safe_image_path($article->{image} || '')) {
+        my $image_url = escape_attr(site_absolute_url(image_src($article->{image})));
+        $og_meta .= qq|  <meta property="og:image" content="$image_url">\n|;
+    }
 
     return <<"HTML";
 Content-Type: text/html; charset=UTF-8
@@ -444,6 +539,8 @@ $lang_cookie
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   $description_meta
+  $canonical_meta
+  $og_meta
   <title>$safe_page_title</title>
   <link rel="stylesheet" href="$css_href">
 </head>
@@ -480,6 +577,17 @@ sub plain_text {
     $value =~ s/&gt;/>/g;
     $value =~ s/\s+/ /g;
     $value =~ s/^\s+|\s+$//g;
+    return $value;
+}
+
+sub xml_escape {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/&/&amp;/g;
+    $value =~ s/</&lt;/g;
+    $value =~ s/>/&gt;/g;
+    $value =~ s/"/&quot;/g;
+    $value =~ s/'/&apos;/g;
     return $value;
 }
 

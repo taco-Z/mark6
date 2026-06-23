@@ -83,6 +83,8 @@ like($detail, qr/別府駅/, 'renders legacy detail title');
 like($detail, qr/日本語本文です。/, 'renders legacy detail body');
 like($detail, qr/href="\/test\/mark6\/en\/oita360\/beppu-station\/"/, 'detail links alternate language');
 like($detail, qr/<meta name="description" content="Japanese SEO description">/, 'renders the matching language SEO description');
+like($detail, qr/<link rel="canonical" href="http:\/\/localhost\/test\/mark6\/ja\/oita360\/beppu-station\/">/, 'renders article canonical URL');
+like($detail, qr/<meta property="og:type" content="article">/, 'renders article Open Graph type');
 
 my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
@@ -108,6 +110,15 @@ like($root_cookie, qr/Location: \/test\/mark6\/ja\//, 'root redirect prefers lan
 my $root_ja = run_cgi('path=', '', '', 'ja-JP,ja;q=0.9,en;q=0.8');
 like($root_ja, qr/Location: \/test\/mark6\/ja\//, 'empty path query redirects to Japanese from browser language');
 
+my $robots = run_cgi('', '/robots.txt');
+like($robots, qr/Content-Type: text\/plain; charset=UTF-8/, 'renders robots text');
+like($robots, qr/Sitemap: http:\/\/localhost\/test\/mark6\/sitemap\.xml/, 'robots links the sitemap');
+
+my $sitemap = run_cgi('', '/sitemap.xml');
+like($sitemap, qr/Content-Type: application\/xml; charset=UTF-8/, 'renders XML sitemap');
+like($sitemap, qr/http:\/\/localhost\/test\/mark6\/ja\/oita360\/beppu-station\//, 'sitemap includes Japanese article URL');
+like($sitemap, qr/http:\/\/localhost\/test\/mark6\/en\/oita360\/beppu-station\//, 'sitemap includes English article URL');
+
 my $request_uri_lang = run_cgi('', '', '/test/mark6/ja/');
 unlike($request_uri_lang, qr/Status: 302 Found/, 'language URL from REQUEST_URI is not redirected');
 like($request_uri_lang, qr/Home body/, 'language URL from REQUEST_URI renders normally');
@@ -118,6 +129,7 @@ like($en_detail, qr/日本語本文です。/, 'falls back to default body when 
 
 my $list = run_cgi('order=article&tag=News');
 like($list, qr/Tag: News/, 'renders tag page');
+ok(-e File::Spec->catfile($root, 'dat', 'logs', 'access.jsonl'), 'writes privacy-minimized access log');
 like($list, qr/href="\/test\/mark6\/ja\/\?tag=News"/, 'renders tag URL from site base');
 like($list, qr/別府駅/, 'renders filtered article');
 
