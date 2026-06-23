@@ -76,6 +76,8 @@ like($home, qr/別府駅/, 'renders default language article summary');
 like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
 like($home, qr/class="language-switch"/, 'renders language switch links');
 like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css"/, 'renders asset URL from asset base');
+like($home, qr/mark6-icon\.svg/, 'renders MARK6 favicon');
+like($home, qr/mark6-logo-light\.svg/, 'renders MARK6 footer logo');
 like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
 
 my $detail = run_cgi('order=focus&tar=1375451805');

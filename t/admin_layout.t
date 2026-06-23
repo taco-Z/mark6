@@ -55,6 +55,9 @@ for my $case (
     like($page, qr/<html lang="ja">/, "$title page sets Japanese html language");
     like($page, qr/MARK6 管理画面/, "$title page uses admin layout");
     like($page, qr/class="site-nav admin-nav"/, "$title page uses shared admin nav");
+    like($page, qr/mark6-logo-light\.svg/, "$title page renders MARK6 brand logo");
+    like($page, qr/class="admin-footer"/, "$title page renders MARK6 admin footer");
+    like($page, qr/mark6-icon\.svg/, "$title page includes MARK6 favicon");
     like($page, qr/<a class="active" href="\Q$active_href\E">/, "$title page marks active nav");
     like($page, qr/サイト表示/, "$title nav uses Japanese labels");
     like($page, qr/home\.cgi/, "$title nav links home");

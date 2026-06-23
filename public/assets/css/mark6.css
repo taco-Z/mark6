@@ -1,12 +1,13 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f2f2f2;
   --panel: #ffffff;
-  --text: #1f2328;
-  --muted: #65707d;
-  --line: #d8dee6;
-  --accent: #0f6d7a;
-  --accent-strong: #084c57;
+  --text: #111111;
+  --muted: #68717a;
+  --line: #d9dddf;
+  --accent: #26b6c6;
+  --accent-strong: #087f8d;
+  --brand-black: #111111;
 }
 
 * {
@@ -42,6 +43,34 @@ img {
   background: var(--panel);
 }
 
+.admin-header {
+  min-height: 68px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-top: 3px solid var(--accent);
+  border-bottom: 0;
+  background: var(--brand-black);
+}
+
+.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 186px;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.admin-brand img {
+  display: block;
+  width: 124px;
+  height: auto;
+}
+
 .brand {
   color: var(--text);
   font-weight: 700;
@@ -56,13 +85,25 @@ img {
 
 .admin-nav {
   flex-wrap: wrap;
-  gap: 10px 14px;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.admin-nav a {
+  padding: 6px 9px;
+  color: #dfe4e6;
+  font-size: .84rem;
+  text-decoration: none;
+}
+
+.admin-nav a:hover {
+  color: #fff;
 }
 
 .admin-nav a.active {
-  color: var(--accent-strong);
+  border-bottom: 2px solid var(--accent);
+  color: #fff;
   font-weight: 700;
-  text-decoration: none;
 }
 
 .language-switch {
@@ -90,6 +131,14 @@ img {
 .site-main {
   width: min(960px, calc(100% - 32px));
   margin: 32px auto 48px;
+}
+
+.admin-main {
+  width: min(1080px, calc(100% - 32px));
+}
+
+.admin-main h1 {
+  letter-spacing: .02em;
 }
 
 .home,
@@ -204,6 +253,8 @@ button {
   font: inherit;
   text-decoration: none;
   cursor: pointer;
+  font-weight: 700;
+  letter-spacing: .02em;
 }
 
 .button.secondary {
@@ -212,10 +263,29 @@ button {
   color: var(--accent-strong);
 }
 
+button:hover,
+.button:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.button.secondary:hover {
+  border-color: var(--accent);
+  background: #e9fbfd;
+  color: var(--accent-strong);
+}
+
 .admin-menu {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.admin-menu .button:first-child,
+.admin-menu .button:nth-child(2) {
+  background: var(--brand-black);
+  border-color: var(--brand-black);
 }
 
 .dashboard-stats {
@@ -310,7 +380,7 @@ button {
   display: grid;
   gap: 14px;
   margin: 0;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid var(--line);
   background: #fff;
 }
@@ -318,6 +388,11 @@ button {
 .admin-form legend {
   padding: 0 6px;
   font-weight: 700;
+}
+
+.admin-form fieldset > fieldset {
+  padding: 14px;
+  background: #f8fafb;
 }
 
 .admin-form input,
@@ -333,6 +408,15 @@ button {
   background: #fff;
   color: var(--text);
   font: inherit;
+}
+
+.admin-form input:focus,
+.admin-form select:focus,
+.admin-form textarea:focus,
+.admin-login input:focus,
+.admin-login select:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: var(--accent-strong);
 }
 
 .media-upload {
@@ -369,10 +453,37 @@ button {
 }
 
 .site-footer {
-  padding: 24px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 24px;
+  border-top: 3px solid var(--accent);
+  background: var(--brand-black);
+  color: #d5dcdf;
+  font-size: .8rem;
+}
+
+.site-footer img {
+  width: 78px;
+  height: auto;
+}
+
+.admin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px clamp(18px, 4vw, 48px);
+  border-top: 1px solid #2a3034;
+  background: var(--brand-black);
+  color: #b7c0c4;
+  font-size: .75rem;
+}
+
+.admin-footer img {
+  width: 92px;
+  height: auto;
 }
 
 @media (max-width: 640px) {
@@ -380,6 +491,25 @@ button {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .admin-header {
+    align-items: stretch;
+  }
+
+  .admin-nav {
+    justify-content: flex-start;
+  }
+
+  .admin-nav a {
+    padding-left: 0;
+    padding-right: 12px;
+  }
+
+  .admin-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .article-summary {

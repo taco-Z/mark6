@@ -15,6 +15,7 @@ sub render_page {
     my $admin_title = Mark6::CGI::escape_html($lang->t('admin.title', 'Admin'));
     my $html_lang = Mark6::CGI::escape_html($lang->code);
     my $nav = admin_nav($active, $lang);
+    my $admin_label = Mark6::CGI::escape_html($lang->t('admin.title', 'Admin'));
 
     Mark6::CGI::print_html(<<"HTML");
 <!doctype html>
@@ -23,14 +24,22 @@ sub render_page {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$safe_title - MARK6 $admin_title</title>
+  <link rel="icon" href="../public/assets/img/mark6-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../public/assets/css/mark6.css">
 </head>
 <body>
   <header class="site-header admin-header">
-    <a class="brand" href="index.cgi">MARK6 $admin_title</a>
+    <a class="admin-brand" href="index.cgi">
+      <img src="../public/assets/img/mark6-logo-light.svg" alt="MARK6">
+      <span>$admin_label</span>
+    </a>
     $nav
   </header>
   <main class="site-main admin-main">$content</main>
+  <footer class="admin-footer">
+    <img src="../public/assets/img/mark6-logo-light.svg" alt="MARK6">
+    <span>TurboWorks CMS</span>
+  </footer>
 </body>
 </html>
 HTML

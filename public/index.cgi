@@ -512,6 +512,8 @@ sub render_page {
     my $home_href = escape_attr(lang_url($current_lang));
     my $articles_href = escape_attr(article_list_url());
     my $css_href = escape_attr(asset_url('css/mark6.css'));
+    my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg'));
+    my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg'));
     my $lang_cookie = lang_cookie_header();
     my $safe_page_description = escape_attr($page_description || '');
     my $safe_canonical_url = escape_attr($canonical_url || '');
@@ -542,6 +544,7 @@ $lang_cookie
   $canonical_meta
   $og_meta
   <title>$safe_page_title</title>
+  <link rel="icon" href="$favicon_href" type="image/svg+xml">
   <link rel="stylesheet" href="$css_href">
 </head>
 <body>
@@ -556,7 +559,10 @@ $lang_cookie
   <main class="site-main">
     $content
   </main>
-  <footer class="site-footer">Powered by MARK6</footer>
+  <footer class="site-footer">
+    <img src="$footer_logo" alt="MARK6">
+    <span>Powered by MARK6</span>
+  </footer>
 </body>
 </html>
 HTML

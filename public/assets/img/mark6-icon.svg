@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">M6</title>
+  <rect width="64" height="64" rx="12" fill="#111111"/>
+  <text x="8" y="47" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="900" letter-spacing="-6">M</text>
+  <text x="34" y="47" fill="#26B6C6" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="900" letter-spacing="-5">6</text>
+</svg>
