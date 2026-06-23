@@ -511,6 +511,9 @@ sub render_page {
     my $language_links = render_language_links();
     my $home_href = escape_attr(lang_url($current_lang));
     my $articles_href = escape_attr(article_list_url());
+    my ($home_label, $articles_label) = public_nav_labels();
+    $home_label = escape_html($home_label);
+    $articles_label = escape_html($articles_label);
     my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=2');
     my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
     my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
@@ -551,8 +554,8 @@ $lang_cookie
   <header class="site-header">
     <a class="brand" href="$home_href">$safe_site_title</a>
     <nav class="site-nav">
-      <a href="$home_href">Home</a>
-      <a href="$articles_href">Articles</a>
+      <a href="$home_href">$home_label</a>
+      <a href="$articles_href">$articles_label</a>
     </nav>
     $language_links
   </header>
@@ -566,6 +569,10 @@ $lang_cookie
 </body>
 </html>
 HTML
+}
+
+sub public_nav_labels {
+    return $current_lang eq 'ja' ? ('ホーム', '記事') : ('Home', 'Articles');
 }
 
 sub trusted_html {

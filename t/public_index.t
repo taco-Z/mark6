@@ -79,6 +79,8 @@ like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=2"/, 'renders ver
 like($home, qr/mark6-icon\.svg/, 'renders MARK6 favicon');
 like($home, qr/mark6-logo-light\.svg/, 'renders MARK6 footer logo');
 like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
+like($home, qr/>ホーム<\/a>/, 'renders Japanese home navigation label');
+like($home, qr/>記事<\/a>/, 'renders Japanese articles navigation label');
 
 my $detail = run_cgi('order=focus&tar=1375451805');
 like($detail, qr/別府駅/, 'renders legacy detail title');
@@ -90,6 +92,8 @@ like($detail, qr/<meta property="og:type" content="article">/, 'renders article 
 
 my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
+like($en_detail, qr/>Home<\/a>/, 'renders English home navigation label');
+like($en_detail, qr/>Articles<\/a>/, 'renders English articles navigation label');
 like($en_detail, qr/<meta name="description" content="About Beppu Station">/, 'uses localized content when no matching language SEO description exists');
 unlike($en_detail, qr/Japanese SEO description/, 'does not use a different language SEO description');
 my $request_uri_detail = run_cgi('', '', '/public/index.cgi/en/oita360/beppu-station/?x=1');
