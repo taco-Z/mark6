@@ -136,8 +136,15 @@ img {
 .admin-main {
   width: min(1080px, calc(100% - 32px));
   position: relative;
-  min-height: 620px;
+  flex: 1 0 auto;
+  min-height: 0;
   isolation: isolate;
+}
+
+.admin-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 .admin-main > * {
@@ -146,9 +153,9 @@ img {
 }
 
 .admin-main::before {
-  position: fixed;
+  position: absolute;
   right: clamp(24px, 6vw, 96px);
-  bottom: 70px;
+  bottom: 24px;
   z-index: 0;
   width: min(54vw, 660px);
   aspect-ratio: 460 / 96;
@@ -496,6 +503,9 @@ button:hover,
 }
 
 .admin-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -513,13 +523,9 @@ button:hover,
 }
 
 @media (max-width: 640px) {
-  .admin-main {
-    min-height: 520px;
-  }
-
   .admin-main::before {
     right: 16px;
-    bottom: 42px;
+    bottom: 24px;
     width: min(92vw, 560px);
   }
 

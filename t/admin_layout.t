@@ -53,6 +53,7 @@ for my $case (
     );
 
     like($page, qr/<html lang="ja">/, "$title page sets Japanese html language");
+    like($page, qr/<body class="admin-body">/, "$title page uses the sticky admin page frame");
     like($page, qr/MARK6 管理画面/, "$title page uses admin layout");
     like($page, qr/class="site-nav admin-nav"/, "$title page uses shared admin nav");
     like($page, qr/mark6-logo-light\.svg/, "$title page renders MARK6 brand logo");

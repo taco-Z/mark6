@@ -27,7 +27,7 @@ sub render_page {
   <link rel="icon" href="../public/assets/img/mark6-icon.svg?v=2" type="image/svg+xml">
   <link rel="stylesheet" href="../public/assets/css/mark6.css?v=2">
 </head>
-<body>
+<body class="admin-body">
   <header class="site-header admin-header">
     <a class="admin-brand" href="index.cgi">
       <img src="../public/assets/img/mark6-logo-light.svg?v=2" alt="MARK6">
