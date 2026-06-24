@@ -202,10 +202,14 @@ h3 {
 
 .article-summary {
   display: grid;
-  grid-template-columns: 148px 1fr;
+  grid-template-columns: 1fr;
   gap: 18px;
   padding: 18px 0;
   border-top: 1px solid var(--line);
+}
+
+.article-summary.has-image {
+  grid-template-columns: 148px minmax(0, 1fr);
 }
 
 .article-summary:first-of-type {

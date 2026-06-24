@@ -82,6 +82,8 @@ like($home, qr/mark6-logo-light\.svg/, 'renders MARK6 footer logo');
 like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
 like($home, qr/>ホーム<\/a>/, 'renders Japanese home navigation label');
 like($home, qr/>記事<\/a>/, 'renders Japanese articles navigation label');
+like($home, qr/<article class="article-summary">/, 'uses a full-width summary layout without an image');
+unlike($home, qr/<article class="article-summary has-image">/, 'does not reserve an image column when no image exists');
 
 my $detail = run_cgi('order=focus&tar=1375451805');
 like($detail, qr/別府駅/, 'renders legacy detail title');

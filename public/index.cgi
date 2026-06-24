@@ -322,10 +322,11 @@ sub render_article_summary {
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
     my $tags = render_tags($article->{tags} || []);
     my $image = render_image($article, 'summary-image');
+    my $image_class = $image ne '' ? ' has-image' : '';
     my $href = escape_attr(article_url($article, $current_lang));
 
     return <<"HTML";
-<article class="article-summary">
+<article class="article-summary$image_class">
   $image
   <div class="summary-main">
     <div class="meta">$date</div>
