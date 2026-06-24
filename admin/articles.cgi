@@ -286,7 +286,7 @@ sub save_article {
         slug       => safe_segment($params{slug} || $existing->{slug} || $id),
         node       => safe_segment($params{node} || $existing->{node} || $config->{site}{node} || 'oita360'),
         tags       => parse_tags($params{tags} || ''),
-        image      => safe_image_path($params{image_manual} || $params{image} || ''),
+        image      => safe_image_path($params{image} || $params{image_manual} || ''),
         intro      => $default_description,
         body       => $default_body,
         writer_id  => $existing->{writer_id} || $user->{id},
@@ -837,6 +837,7 @@ sub load_media {
 sub safe_image_path {
     my ($value) = @_;
     return '' unless defined $value;
+    return $value if $value =~ m{\Ahttps://[^\s<>"']+\z};
     return '' if $value =~ /\.\./;
     return $value =~ /\A[0-9A-Za-z_.\/-]+\z/ ? $value : '';
 }

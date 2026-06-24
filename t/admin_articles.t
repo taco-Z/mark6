@@ -73,6 +73,7 @@ my $save = run_cgi(
         status     => 'published',
         tags       => 'News, Perl',
         image      => '',
+        image_manual => 'https://img.youtube.com/vi/Jce1N0hRfJc/hqdefault.jpg',
         description_ja => '<p>紹介文</p>',
         body_ja    => '<p>本文</p>',
         description_en => '<p>Summary</p>',
@@ -94,6 +95,7 @@ my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'tes
 is($saved_article->{default_lang}, 'ja', 'default language saved');
 is($saved_article->{node}, 'oita360', 'node saved');
 is($saved_article->{slug}, 'beppu-station', 'slug saved');
+is($saved_article->{image}, 'https://img.youtube.com/vi/Jce1N0hRfJc/hqdefault.jpg', 'external HTTPS image URL saved');
 is($saved_article->{translation_status}{en}{state}, 'translated', 'newly saved English content is marked translated');
 is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
 is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
@@ -167,6 +169,8 @@ my $tag_apply = run_cgi(
 like($tag_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=tags_applied\#article-editor/, 'tag action returns to the article editor');
 my $tag_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is_deeply($tag_article->{tags}, ['News', 'Perl', 'Travel', 'Beppu'], 'tag action preserves existing tags and adds unique AI suggestions');
+$tag_article->{image} = 'https://img.youtube.com/vi/Jce1N0hRfJc/hqdefault.jpg';
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'), $tag_article);
 
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
@@ -175,6 +179,9 @@ my $public = run_cgi(
 );
 like($public, qr/テスト記事/, 'saved article appears publicly');
 like($public, qr/本文/, 'public detail renders body');
+
+like($public, qr{src="https://img\.youtube\.com/vi/Jce1N0hRfJc/hqdefault\.jpg"}, 'public detail renders external image URL');
+like($public, qr{<meta property="og:image" content="https://img\.youtube\.com/vi/Jce1N0hRfJc/hqdefault\.jpg">}, 'public detail uses external image URL for Open Graph');
 
 my $public_en = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),

@@ -404,14 +404,21 @@ sub render_language_links {
 
 sub image_src {
     my ($image) = @_;
+    return $image if external_image_url($image);
     return $image =~ m{\Aimg/} ? site_url($image) : site_url("img/$image");
 }
 
 sub safe_image_path {
     my ($value) = @_;
     return 0 unless defined $value && $value ne '';
+    return 1 if external_image_url($value);
     return 0 if $value =~ /\.\./;
     return $value =~ /\A[0-9A-Za-z_.\/-]+\z/ ? 1 : 0;
+}
+
+sub external_image_url {
+    my ($value) = @_;
+    return defined $value && $value =~ m{\Ahttps://[^\s<>"']+\z};
 }
 
 sub safe_segment {
