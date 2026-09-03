@@ -24,6 +24,15 @@ MARK6 stores all CMS data as UTF-8 JSON.
     "articles_per_page": 20,
     "mini_articles": 15
   },
+  "nodes": {
+    "articles": {
+      "nav": true,
+      "labels": {
+        "ja": "記事",
+        "en": "Articles"
+      }
+    }
+  },
   "kiosk": {
     "provider": "amazon",
     "affiliate_tag": ""
@@ -56,6 +65,10 @@ MARK6 stores all CMS data as UTF-8 JSON.
   "title": "",
   "slug": "",
   "tags": [],
+  "tag_langs": {
+    "ja": [],
+    "en": []
+  },
   "image": "",
   "intro": "",
   "body": "",
@@ -66,6 +79,16 @@ MARK6 stores all CMS data as UTF-8 JSON.
   "ai": {
     "summary": "",
     "suggested_tags": [],
+    "kiosk": {
+      "kiosk_items": [
+        {
+          "label": "Search label",
+          "keyword": "search keyword",
+          "reason": "Why this search link fits the article"
+        }
+      ],
+      "last_processed_at": ""
+    },
     "last_processed_at": ""
   },
   "kiosk": {
@@ -86,7 +109,13 @@ MARK6 stores all CMS data as UTF-8 JSON.
 
 `sort_order` is optional. Lower numbers appear first in article lists. Existing articles without `sort_order` continue to fall back to the legacy newest-first order until an admin reorder operation writes explicit values.
 
+`tag_langs` is optional. Public pages use `tag_langs[current_lang]` when available and fall back to `tags`.
+
+`nodes` stores section display labels outside article JSON. The key is the URL segment used by `article.node`; `labels` is used in public navigation, and `nav` controls whether the section appears in the header.
+
 `kiosk` is a lightweight post-article search link component. MARK6 does not store product price, stock, reviews, or images. Site-specific product wording belongs in each article JSON item; core rendering only checks `enabled`, reads `label` and `keyword`, URL-encodes the keyword, and generates an Amazon search URL. When `dat/config.json` has `kiosk.affiliate_tag`, MARK6 appends it as the Amazon `tag` parameter.
+
+AI Kiosk suggestions are stored under `ai.kiosk.kiosk_items` until an admin applies them. Applying suggestions merges unique `label` and `keyword` pairs into `kiosk.items`; the optional `reason` is kept only for admin review.
 
 ## Users
 

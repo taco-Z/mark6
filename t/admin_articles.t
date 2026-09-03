@@ -47,15 +47,24 @@ my $new_form = run_cgi(
 );
 like($new_form, qr/新規記事/, 'new article form renders');
 like($new_form, qr/class="lang-tab active" type="button" data-lang-tab="lang-panel-ja"/, 'form renders language tabs');
+like($new_form, qr/name="default_lang" value="ja"/, 'form keeps default language as a hidden value');
+unlike($new_form, qr/<select name="default_lang">/, 'form does not show default language selector');
 like($new_form, qr/name="title_ja"/, 'form renders Japanese title field');
 like($new_form, qr/name="title_en"/, 'form renders English title field');
+like($new_form, qr/data-lang-tab="ai-panel-writing"/, 'form renders AI writing tab');
+like($new_form, qr/data-lang-tab="ai-panel-translate"/, 'form renders AI translation tab');
+like($new_form, qr/data-lang-tab="ai-panel-seo"/, 'form renders AI SEO tab');
+like($new_form, qr/data-lang-tab="ai-panel-seo-rewrite"/, 'form renders AI SEO rewrite tab');
 like($new_form, qr/name="ai_run_draft" type="checkbox" value="1"/, 'form renders AI body draft toggle');
 like($new_form, qr/name="ai_run_translate" type="checkbox" value="1"/, 'form renders AI translation toggle');
 like($new_form, qr/name="ai_run_rewrite" type="checkbox" value="1"/, 'form renders AI rewrite toggle');
 like($new_form, qr/name="ai_run_seo" type="checkbox" value="1"/, 'form renders AI SEO diagnosis toggle');
+like($new_form, qr/name="ai_run_kiosk" type="checkbox" value="1"/, 'form renders AI Kiosk suggestion toggle');
 like($new_form, qr/name="command" value="ai_run_selected"/, 'form renders selected AI action submit');
 like($new_form, qr/id="ai-assist"/, 'form provides an AI action return anchor');
 like($new_form, qr/id="article-editor"/, 'form provides an article editor return anchor');
+like($new_form, qr/name="tags_ja"/, 'form renders Japanese tags field');
+like($new_form, qr/name="tags_en"/, 'form renders English tags field');
 like($new_form, qr/name="kiosk_enabled"/, 'form renders Kiosk toggle');
 like($new_form, qr/name="kiosk_label_1"/, 'form renders Kiosk label field');
 like($new_form, qr/name="kiosk_keyword_1"/, 'form renders Kiosk keyword field');
@@ -77,6 +86,8 @@ my $save = run_cgi(
         title_en   => 'Test article',
         status     => 'published',
         tags       => 'News, Perl',
+        tags_ja    => 'ニュース, Perl',
+        tags_en    => 'News, Perl',
         image      => '',
         image_manual => 'https://img.youtube.com/vi/Jce1N0hRfJc/hqdefault.jpg',
         description_ja => '<p>紹介文</p>',
@@ -96,7 +107,8 @@ my $list = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($list, qr/テスト記事/, 'saved article appears in admin list');
-like($list, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/" target="_blank" rel="noopener"/, 'view link opens public article in new tab');
+like($list, qr/class="button secondary compact" href="\/test\/mark6\/ja\/oita360\/beppu-station\/" target="_blank" rel="noopener"/, 'view link is a button and opens public article in new tab');
+like($list, qr/class="button secondary compact" href="articles\.cgi\?command=edit&amp;id=test-article"/, 'edit link is rendered as a button');
 like($list, qr/name="order_action" value="top"/, 'article list renders move-to-top action');
 like($list, qr/name="order_position" type="number"/, 'article list renders direct order position field');
 like($list, qr/onsubmit="return confirm\('この記事を削除しますか？'\);"/, 'delete confirms before submit');
@@ -110,6 +122,9 @@ is($saved_article->{translation_status}{en}{state}, 'translated', 'newly saved E
 is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
 is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
 is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default language');
+is($saved_article->{sort_order}, 10, 'new article is assigned first sort order');
+is_deeply($saved_article->{tag_langs}{ja}, ['ニュース', 'Perl'], 'Japanese localized tags saved');
+is_deeply($saved_article->{tag_langs}{en}, ['News', 'Perl'], 'English localized tags saved');
 ok($saved_article->{kiosk}{enabled}, 'Kiosk enabled flag saved');
 is($saved_article->{kiosk}{items}[0]{label}, 'Guide Book', 'Kiosk item label saved');
 is($saved_article->{kiosk}{items}[0]{keyword}, 'travel guide', 'Kiosk item keyword saved');
@@ -160,6 +175,29 @@ my $reordered_list = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($reordered_list, qr/2番目の記事[\s\S]+テスト記事/, 'admin list follows custom article order');
+
+my $third_save = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'save',
+        id         => 'third-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'third-post',
+        title_ja   => '3番目の記事',
+        title_en   => 'Third article',
+        status     => 'published',
+        tags       => 'News',
+        description_ja => '<p>3番目の紹介文</p>',
+        body_ja    => '<p>3番目の本文</p>',
+    ),
+);
+like($third_save, qr/Location: articles\.cgi/, 'third article save redirects to article list');
+my $third_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'third-article.json'));
+is($third_article->{sort_order}, 0, 'new article is placed before existing ordered articles');
 
 {
     local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
@@ -237,6 +275,43 @@ my $batch_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'tes
 is($batch_article->{ai}{draft}{body}, '<p>AI batch body</p>', 'selected AI action saves body draft');
 is($batch_article->{ai}{seo}{seo_description}, 'AI batch SEO description', 'selected AI action saves SEO diagnosis');
 
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
+        kiosk_items => [
+            { label => 'Travel Guide', keyword => 'Beppu travel guide', reason => 'Matches the article topic.' },
+            { label => 'Camera Gear', keyword => '360 camera accessory', reason => 'Useful for related sightseeing content.' },
+        ],
+    });
+    my $kiosk_ai = run_cgi(
+        script => File::Spec->catfile('admin', 'articles.cgi'),
+        method => 'POST',
+        cookie => "mark6_session=$session_id",
+        body   => form_data(
+            command    => 'ai_run_selected',
+            id         => 'test-article',
+            csrf_token => $csrf,
+            default_lang => 'ja',
+            node       => 'oita360',
+            slug       => 'beppu-station',
+            title_ja   => $saved_article->{langs}{ja}{title},
+            title_en   => 'Test article',
+            status     => 'published',
+            tags       => 'News, Perl',
+            image      => '',
+            description_ja => $saved_article->{langs}{ja}{description},
+            body_ja    => $saved_article->{langs}{ja}{body},
+            description_en => '<p>Summary</p>',
+            body_en    => '<p>Body</p>',
+            ai_run_kiosk => 1,
+        ),
+    );
+    like($kiosk_ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=selected_done\#ai-assist/, 'selected AI Kiosk action returns to the AI action panel');
+}
+
+my $kiosk_ai_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($kiosk_ai_article->{ai}{kiosk}{kiosk_items}[0]{label}, 'Travel Guide', 'AI Kiosk suggestion label saved');
+is($kiosk_ai_article->{ai}{kiosk}{kiosk_items}[0]{keyword}, 'Beppu travel guide', 'AI Kiosk suggestion keyword saved');
+
 my $apply_selected = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
     method => 'POST',
@@ -257,12 +332,44 @@ my $apply_selected = run_cgi(
         body_ja    => $saved_article->{langs}{ja}{body},
         description_en => '<p>Summary</p>',
         body_en    => '<p>Body</p>',
-        ai_apply_result => 'draft',
+        ai_apply_draft => 1,
+        ai_apply_tags => 1,
     ),
 );
 like($apply_selected, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=applied\#article-editor/, 'selected AI apply returns to the article editor');
 my $applied_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is($applied_article->{langs}{ja}{body}, '<p>AI batch body</p>', 'selected AI apply updates the default language body');
+is_deeply($applied_article->{tags}, ['ニュース', 'Perl', 'Batch', 'Travel'], 'selected AI apply can update tags at the same time');
+is_deeply($applied_article->{tag_langs}{ja}, ['ニュース', 'Perl', 'Batch', 'Travel'], 'selected AI apply updates default language tags');
+
+my $kiosk_apply = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'ai_apply_selected',
+        id         => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => $saved_article->{langs}{ja}{title},
+        title_en   => 'Test article',
+        status     => 'published',
+        tags       => 'News, Perl',
+        image      => '',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja    => $saved_article->{langs}{ja}{body},
+        description_en => '<p>Summary</p>',
+        body_en    => '<p>Body</p>',
+        ai_apply_kiosk => 1,
+    ),
+);
+like($kiosk_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=kiosk_applied\#article-editor/, 'AI Kiosk apply returns to the article editor');
+my $kiosk_applied_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($kiosk_applied_article->{kiosk}{items}[0]{label}, 'Guide Book', 'AI Kiosk apply preserves existing Kiosk item');
+is($kiosk_applied_article->{kiosk}{items}[1]{label}, 'Travel Guide', 'AI Kiosk apply adds suggested item');
+is($kiosk_applied_article->{kiosk}{items}[1]{keyword}, 'Beppu travel guide', 'AI Kiosk apply adds suggested keyword');
 
 $ai_article->{ai}{seo} = {
     suggested_tags => ['Perl', 'Travel', 'travel', 'Beppu'],
@@ -293,7 +400,8 @@ my $tag_apply = run_cgi(
 );
 like($tag_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=tags_applied\#article-editor/, 'tag action returns to the article editor');
 my $tag_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
-is_deeply($tag_article->{tags}, ['News', 'Perl', 'Travel', 'Beppu'], 'tag action preserves existing tags and adds unique AI suggestions');
+is_deeply($tag_article->{tags}, ['ニュース', 'Perl', 'Travel', 'Beppu'], 'tag action preserves default language tags and adds unique AI suggestions');
+is_deeply($tag_article->{tag_langs}{ja}, ['ニュース', 'Perl', 'Travel', 'Beppu'], 'tag action updates default language tags');
 $tag_article->{image} = 'https://img.youtube.com/vi/Jce1N0hRfJc/hqdefault.jpg';
 write_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'), $tag_article);
 
@@ -370,6 +478,22 @@ my $translation_update = run_cgi(
 like($translation_update, qr/Location: articles\.cgi/, 'translation update redirects to article list');
 my $translated_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
 is($translated_article->{translation_status}{en}{state}, 'translated', 'updating English content marks it translated');
+
+my $admin_config = read_json(File::Spec->catfile($root, 'dat', 'config.json'));
+$admin_config->{site}{language} = 'en';
+write_json(File::Spec->catfile($root, 'dat', 'config.json'), $admin_config);
+my $english_list = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'GET',
+    cookie => "mark6_session=$session_id",
+);
+like($english_list, qr/>Articles<\/h1>/, 'article list switches title to English');
+like($english_list, qr/Updated test article/, 'article list switches article title to English');
+unlike($english_list, qr/<strong>テスト記事<\/strong>/, 'article list does not keep Japanese article title when English title exists');
+like($english_list, qr/Published/, 'article list switches status label to English');
+like($english_list, qr/>Edit<\/a>/, 'article list switches edit button to English');
+like($english_list, qr/href="\/test\/mark6\/en\/oita360\/beppu-station\/" target="_blank" rel="noopener">View<\/a>/, 'article list view button uses admin language URL');
+unlike($english_list, qr/公開/, 'article list does not keep Japanese status when admin language is English');
 
 my $delete = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),

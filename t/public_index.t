@@ -34,6 +34,22 @@ write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
         mini_articles => 1,
         articles_per_page => 1,
     },
+    nodes => {
+        oita360 => {
+            nav => JSON::PP::true,
+            labels => {
+                ja => '大分360',
+                en => 'Oita 360',
+            },
+        },
+        articles => {
+            nav => JSON::PP::true,
+            labels => {
+                ja => '記事セクション',
+                en => 'Article section',
+            },
+        },
+    },
     kiosk => {
         provider => 'amazon',
         affiliate_tag => 'mark6-test-22',
@@ -77,6 +93,10 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
         },
     },
     tags => ['News'],
+    tag_langs => {
+        ja => ['ニュース'],
+        en => ['News'],
+    },
     image => '',
     sort_order => 10,
     kiosk => {
@@ -116,6 +136,10 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451806.json'), {
         },
     },
     tags => ['News'],
+    tag_langs => {
+        ja => ['ニュース'],
+        en => ['News'],
+    },
     image => 'https://example.com/older.jpg',
     sort_order => 20,
     kiosk => {
@@ -137,16 +161,18 @@ like($home, qr/日本語ホーム/, 'renders localized Japanese home body');
 like($home, qr/別府駅/, 'renders default language article summary');
 like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
 like($home, qr/class="language-switch"/, 'renders language switch links');
-like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=3"/, 'renders versioned asset URL from asset base');
+like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=5"/, 'renders versioned asset URL from asset base');
 like($home, qr/mark6-icon\.svg/, 'renders MARK6 favicon');
 like($home, qr/mark6-logo-light\.svg/, 'renders MARK6 footer logo');
 like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
 like($home, qr/>ホーム<\/a>/, 'renders Japanese home navigation label');
 like($home, qr/>記事<\/a>/, 'renders Japanese articles navigation label');
+like($home, qr/href="\/test\/mark6\/ja\/oita360\/">大分360<\/a>/, 'renders Japanese section navigation label');
+unlike($home, qr/href="\/test\/mark6\/ja\/articles\/">/, 'does not render reserved articles section navigation');
 like($home, qr/<article class="article-summary">/, 'uses a full-width summary layout without an image');
 unlike($home, qr/<article class="article-summary has-image">/, 'does not reserve an image column when no image exists');
 unlike($home, qr/Older Article/, 'home article list honors mini_articles limit');
-like($home, qr/href="\/test\/mark6\/ja\/oita360\/\?tag=News"/, 'home tag URL uses the article node without scanning fallback');
+like($home, qr/href="\/test\/mark6\/ja\/oita360\/\?tag=%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%B9"/, 'home tag URL uses localized tag and article node');
 
 my $detail = run_cgi('order=focus&tar=1375451805');
 like($detail, qr/別府駅/, 'renders legacy detail title');
@@ -167,6 +193,7 @@ my $en_detail = run_cgi('', '/en/oita360/beppu-station/');
 like($en_detail, qr/Beppu Station/, 'renders English detail title from path URL');
 like($en_detail, qr/>Home<\/a>/, 'renders English home navigation label');
 like($en_detail, qr/>Articles<\/a>/, 'renders English articles navigation label');
+like($en_detail, qr/href="\/test\/mark6\/en\/oita360\/">Oita 360<\/a>/, 'renders English section navigation label');
 like($en_detail, qr/<meta name="description" content="About Beppu Station">/, 'uses localized content when no matching language SEO description exists');
 unlike($en_detail, qr/Japanese SEO description/, 'does not use a different language SEO description');
 like($en_detail, qr/>Kiosk<\/h2>/, 'renders English kiosk heading');
@@ -216,13 +243,17 @@ like($unsupported_lang, qr/<html lang="ja">/, 'unsupported language falls back t
 like($en_detail, qr/日本語本文です。/, 'falls back to default body when untranslated');
 
 my $list = run_cgi('order=article&tag=News');
-like($list, qr/Tag: News/, 'renders tag page');
+like($list, qr/タグ: News/, 'renders tag page with localized heading label');
 ok(-e File::Spec->catfile($root, 'dat', 'logs', 'access.jsonl'), 'writes privacy-minimized access log');
-like($list, qr/href="\/test\/mark6\/ja\/oita360\/\?tag=News"/, 'renders tag URL from site base');
+like($list, qr/href="\/test\/mark6\/ja\/oita360\/\?tag=%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%B9"/, 'renders localized tag URL from site base');
 like($list, qr/別府駅/, 'renders filtered article');
 unlike($list, qr/Older Article/, 'tag page honors articles_per_page');
 my $list_page_2 = run_cgi('order=article&tag=News&page=2');
 like($list_page_2, qr/Older Article/, 'tag page renders page 2');
+
+my $ja_tag_list = run_cgi('tag=%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%B9', '/ja/oita360/');
+like($ja_tag_list, qr/タグ: ニュース/, 'renders localized Japanese tag page heading');
+like($ja_tag_list, qr/別府駅/, 'localized Japanese tag filters articles');
 
 my $disabled_kiosk = run_cgi('', '/ja/oita360/older-post/');
 unlike($disabled_kiosk, qr/Hidden Item/, 'does not render disabled kiosk items');

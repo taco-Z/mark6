@@ -281,8 +281,7 @@ sub find_article_by_slug {
 sub filter_by_tag {
     my ($articles, $tag) = @_;
     return grep {
-        my %tags = map { $_ => 1 } @{$_->{tags} || []};
-        $tags{$tag};
+        article_has_tag($_, $tag);
     } @{$articles};
 }
 
@@ -320,9 +319,10 @@ sub render_article_list {
         }
     }
 
+    my ($home_label, $articles_label, $tag_label) = public_nav_labels();
     my $heading = defined $tag && $tag ne ''
-        ? 'Tag: ' . escape_html($tag)
-        : 'Articles';
+        ? $tag_label . ': ' . escape_html($tag)
+        : $articles_label;
 
     my $body = @items
         ? join("\n", map { render_article_summary($_) } @items)
@@ -355,7 +355,7 @@ sub render_article_summary {
     my $title = escape_html(Mark6::Article::title_for($article, $current_lang, $config));
     my $date = escape_html(format_date($article->{created_at} || ''));
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
-    my $tags = render_tags($article->{tags} || [], $article);
+    my $tags = render_tags(article_tags_for_lang($article, $current_lang), $article);
     my $image = render_image($article, 'summary-image');
     my $image_class = $image ne '' ? ' has-image' : '';
     my $href = escape_attr(article_url($article, $current_lang));
@@ -396,7 +396,7 @@ sub render_article_detail {
     my $date = escape_html(format_date($article->{created_at} || ''));
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
     my $body = trusted_html(Mark6::Article::body_for($article, $current_lang, $config));
-    my $tags = render_tags($article->{tags} || [], $article);
+    my $tags = render_tags(article_tags_for_lang($article, $current_lang), $article);
     my $image = render_image($article, 'detail-image');
     my $lang_links = render_language_links($article);
     my $kiosk = render_kiosk($article);
@@ -405,7 +405,7 @@ sub render_article_detail {
 
     return <<"HTML";
 <article class="article-detail">
-  <a class="back-link" href="@{[escape_attr(article_list_url('', Mark6::Article::node_for($article, $config)))]}">Articles</a>
+  <a class="back-link" href="@{[escape_attr(article_list_url('', Mark6::Article::node_for($article, $config)))]}">@{[escape_html((public_nav_labels())[1])]}</a>
   <div class="meta">$date</div>
   $lang_links
   <h1>$title</h1>
@@ -510,6 +510,25 @@ sub render_tags {
     } @{$tags};
 
     return qq|<nav class="tags">$links</nav>|;
+}
+
+sub article_tags_for_lang {
+    my ($article, $lang) = @_;
+    my $tag_langs = ref($article->{tag_langs}) eq 'HASH' ? $article->{tag_langs} : {};
+    return $tag_langs->{$lang} if ref($tag_langs->{$lang}) eq 'ARRAY' && @{$tag_langs->{$lang}};
+    return $article->{tags} if ref($article->{tags}) eq 'ARRAY';
+    return [];
+}
+
+sub article_has_tag {
+    my ($article, $tag) = @_;
+    return 0 unless defined $tag && $tag ne '';
+    my %tags;
+    for my $candidate (@{article_tags_for_lang($article, $current_lang)}, @{$article->{tags} || []}) {
+        next unless defined $candidate && $candidate ne '';
+        $tags{$candidate} = 1;
+    }
+    return $tags{$tag} ? 1 : 0;
 }
 
 sub render_image {
@@ -699,7 +718,8 @@ sub render_page {
     my ($home_label, $articles_label) = public_nav_labels();
     $home_label = escape_html($home_label);
     $articles_label = escape_html($articles_label);
-    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=3');
+    my $section_links = render_section_nav();
+    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=5');
     my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
     my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
     my $lang_cookie = lang_cookie_header();
@@ -741,6 +761,7 @@ $lang_cookie
     <nav class="site-nav">
       <a href="$home_href">$home_label</a>
       <a href="$articles_href">$articles_label</a>
+      $section_links
     </nav>
     $language_links
   </header>
@@ -757,7 +778,50 @@ HTML
 }
 
 sub public_nav_labels {
-    return $current_lang eq 'ja' ? ('ホーム', '記事') : ('Home', 'Articles');
+    return $current_lang eq 'ja' ? ('ホーム', '記事', 'タグ') : ('Home', 'Articles', 'Tag');
+}
+
+sub render_section_nav {
+    my @nodes = nav_nodes();
+    return '' unless @nodes;
+    my @links;
+    for my $node (@nodes) {
+        next unless safe_segment($node);
+        next if reserved_nav_node($node);
+        my $href = escape_attr(site_url("$current_lang/$node/"));
+        my $label = escape_html(node_label($node, $current_lang));
+        push @links, qq|<a href="$href">$label</a>|;
+    }
+    return join "\n      ", @links;
+}
+
+sub nav_nodes {
+    my $nodes = ref($config->{nodes}) eq 'HASH' ? $config->{nodes} : {};
+    my @configured = grep {
+        safe_segment($_) && !reserved_nav_node($_) && (!exists($nodes->{$_}{nav}) || truthy($nodes->{$_}{nav}))
+    } sort keys %{$nodes};
+    return @configured if @configured;
+
+    my %seen;
+    for my $article (load_articles()) {
+        my $node = Mark6::Article::node_for($article, $config);
+        $seen{$node}++ if safe_segment($node) && !reserved_nav_node($node);
+    }
+    return sort { $seen{$b} <=> $seen{$a} || $a cmp $b } keys %seen;
+}
+
+sub reserved_nav_node {
+    my ($node) = @_;
+    $node = lc($node || '');
+    return $node =~ /\A(?:article|articles|tag|tags|admin|public|assets)\z/ ? 1 : 0;
+}
+
+sub node_label {
+    my ($node, $lang) = @_;
+    my $nodes = ref($config->{nodes}) eq 'HASH' ? $config->{nodes} : {};
+    my $entry = ref($nodes->{$node}) eq 'HASH' ? $nodes->{$node} : {};
+    my $labels = ref($entry->{labels}) eq 'HASH' ? $entry->{labels} : {};
+    return first_text($labels->{$lang}, $labels->{ja}, $labels->{en}, $node);
 }
 
 sub trusted_html {

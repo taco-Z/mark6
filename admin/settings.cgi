@@ -74,17 +74,16 @@ sub render_settings {
 
     my $articles_per_page = Mark6::CGI::escape_html($config->{display}{articles_per_page} || 20);
     my $mini_articles = Mark6::CGI::escape_html($config->{display}{mini_articles} || 15);
-    my $shop_title = Mark6::CGI::escape_html($config->{shop}{title} || 'Shop');
-    my $paypal_id = Mark6::CGI::escape_html($config->{shop}{paypal_id} || '');
     my $ai_provider = Mark6::CGI::escape_html($config->{ai}{provider} || 'openai');
     my $ai_model = Mark6::CGI::escape_html($config->{ai}{model} || 'gpt-5.2');
     my $ai_api_key_env = Mark6::CGI::escape_html($config->{ai}{api_key_env} || 'MARK6_OPENAI_API_KEY');
     my $ai_api_key_file = Mark6::CGI::escape_html($config->{ai}{api_key_file} || '');
+    my $amazon_affiliate_tag = Mark6::CGI::escape_html($config->{kiosk}{affiliate_tag} || '');
+    my $node_fields = node_settings_fields($config);
 
     my $tags_checked = checked($config->{features}{tags});
     my $newest_checked = checked($config->{features}{newest});
     my $popular_checked = checked($config->{features}{popular});
-    my $shop_checked = checked($config->{features}{shop});
     my $ai_checked = checked($config->{features}{ai});
     my $page_title = h($lang->t('admin.common.settings', 'Settings'));
     my $dashboard_label = h($lang->t('admin.common.dashboard', 'Dashboard'));
@@ -101,10 +100,7 @@ sub render_settings {
     my $tags_label = h($lang->t('admin.settings.tags', 'Tags'));
     my $newest_list_label = h($lang->t('admin.settings.newest_list', 'Newest list'));
     my $popular_list_label = h($lang->t('admin.settings.popular_list', 'Popular list'));
-    my $shop_label = h($lang->t('admin.settings.shop', 'Shop'));
     my $ai_assist_label = h($lang->t('admin.settings.ai_assist', 'AI assist'));
-    my $shop_title_label = h($lang->t('admin.settings.shop_title', 'Shop title'));
-    my $paypal_id_label = h($lang->t('admin.settings.paypal_id', 'PayPal ID'));
     my $ai_label = h($lang->t('admin.settings.ai', 'AI'));
     my $ai_provider_label = h($lang->t('admin.settings.ai_provider', 'AI provider'));
     my $ai_model_label = h($lang->t('admin.settings.ai_model', 'AI model'));
@@ -113,6 +109,11 @@ sub render_settings {
     my $ai_api_key_file_label = h($lang->t('admin.settings.ai_api_key_file', 'API key file path'));
     my $ai_api_key_file_help = h($lang->t('admin.settings.ai_api_key_file_help', 'Optional. Keep this file outside the public web directory.'));
     my $openai_label = h($lang->t('admin.settings.ai_provider_openai', 'OpenAI'));
+    my $kiosk_label = h($lang->t('admin.settings.kiosk', 'Kiosk'));
+    my $nodes_label = h($lang->t('admin.settings.nodes', 'Sections'));
+    my $nodes_help = h($lang->t('admin.settings.nodes_help', 'Sections shown in the public header. The ID is used in URLs.'));
+    my $amazon_affiliate_tag_label = h($lang->t('admin.settings.amazon_affiliate_tag', 'Amazon Associate tag'));
+    my $amazon_affiliate_tag_help = h($lang->t('admin.settings.amazon_affiliate_tag_help', 'Optional. Added to Amazon Kiosk search links as the tag parameter.'));
     my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
     render_page($lang->t('admin.common.settings', 'Settings'), <<"HTML");
@@ -143,13 +144,17 @@ sub render_settings {
       <label><input name="feature_tags" type="checkbox" value="1" $tags_checked> $tags_label</label>
       <label><input name="feature_newest" type="checkbox" value="1" $newest_checked> $newest_list_label</label>
       <label><input name="feature_popular" type="checkbox" value="1" $popular_checked> $popular_list_label</label>
-      <label><input name="feature_shop" type="checkbox" value="1" $shop_checked> $shop_label</label>
       <label><input name="feature_ai" type="checkbox" value="1" $ai_checked> $ai_assist_label</label>
     </fieldset>
     <fieldset>
-      <legend>$shop_label</legend>
-      <label>$shop_title_label<br><input name="shop_title" type="text" value="$shop_title"></label>
-      <label>$paypal_id_label<br><input name="paypal_id" type="text" value="$paypal_id"></label>
+      <legend>$nodes_label</legend>
+      <p class="meta">$nodes_help</p>
+      $node_fields
+    </fieldset>
+    <fieldset>
+      <legend>$kiosk_label</legend>
+      <label>$amazon_affiliate_tag_label<br><input name="amazon_affiliate_tag" type="text" value="$amazon_affiliate_tag"></label>
+      <p class="meta">$amazon_affiliate_tag_help</p>
     </fieldset>
     <fieldset>
       <legend>$ai_label</legend>
@@ -177,8 +182,9 @@ sub save_settings {
     $config->{site} ||= {};
     $config->{features} ||= {};
     $config->{display} ||= {};
-    $config->{shop} ||= {};
+    $config->{kiosk} ||= {};
     $config->{ai} ||= {};
+    $config->{nodes} = collect_nodes();
 
     $config->{site}{title} = $params{site_title} || 'MARK6 Site';
     $config->{site}{base_url} = $params{base_url} || '';
@@ -190,11 +196,12 @@ sub save_settings {
     $config->{features}{tags} = bool_param('feature_tags');
     $config->{features}{newest} = bool_param('feature_newest');
     $config->{features}{popular} = bool_param('feature_popular');
-    $config->{features}{shop} = bool_param('feature_shop');
     $config->{features}{ai} = bool_param('feature_ai');
+    delete $config->{features}{shop};
 
-    $config->{shop}{title} = $params{shop_title} || 'Shop';
-    $config->{shop}{paypal_id} = $params{paypal_id} || '';
+    delete $config->{shop};
+    $config->{kiosk}{provider} = 'amazon';
+    $config->{kiosk}{affiliate_tag} = clean_affiliate_tag($params{amazon_affiliate_tag} || '');
     $config->{ai}{provider} = 'openai';
     $config->{ai}{model} = clean_text($params{ai_model} || 'gpt-5.2');
     $config->{ai}{api_key_env} = clean_env_name($params{ai_api_key_env} || 'MARK6_OPENAI_API_KEY');
@@ -207,11 +214,67 @@ sub load_config {
     return $store->read_json('dat', 'config.json') || {
         version => 1,
         site => { title => 'MARK6 Site', base_url => '', language => 'ja' },
-        features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, shop => JSON::PP::false, ai => JSON::PP::false },
+        features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, ai => JSON::PP::false },
         display => { articles_per_page => 20, mini_articles => 15 },
-        shop => { title => 'Shop', paypal_id => '' },
+        nodes => {},
+        kiosk => { provider => 'amazon', affiliate_tag => '' },
         ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY', api_key_file => '' },
     };
+}
+
+sub node_settings_fields {
+    my ($config) = @_;
+    my $nodes = ref($config->{nodes}) eq 'HASH' ? $config->{nodes} : {};
+    my @ids = sort keys %{$nodes};
+    my $default_node = $config->{site}{node} || 'articles';
+    unshift @ids, $default_node if $default_node ne '' && !grep { $_ eq $default_node } @ids;
+    @ids = @ids[0 .. 4] if @ids > 5;
+    push @ids, ('') x (5 - @ids) if @ids < 5;
+
+    my $id_label = h($lang->t('admin.settings.node_id', 'Section ID'));
+    my $ja_label = h($lang->t('admin.settings.node_label_ja', 'Japanese label'));
+    my $en_label = h($lang->t('admin.settings.node_label_en', 'English label'));
+    my $nav_label = h($lang->t('admin.settings.node_nav', 'Show in header'));
+    my @rows;
+
+    for my $index (0 .. $#ids) {
+        my $number = $index + 1;
+        my $id = $ids[$index];
+        my $node = ref($nodes->{$id}) eq 'HASH' ? $nodes->{$id} : {};
+        my $labels = ref($node->{labels}) eq 'HASH' ? $node->{labels} : {};
+        my $safe_id = h($id);
+        my $label_ja = h($labels->{ja} || ($id eq $default_node ? $id : ''));
+        my $label_en = h($labels->{en} || ($id eq $default_node ? $id : ''));
+        my $checked = checked(!exists($node->{nav}) || $node->{nav});
+        push @rows, <<"HTML";
+      <div class="node-settings-row">
+        <label>$id_label $number<br><input name="node_id_$number" type="text" value="$safe_id"></label>
+        <label>$ja_label<br><input name="node_label_ja_$number" type="text" value="$label_ja"></label>
+        <label>$en_label<br><input name="node_label_en_$number" type="text" value="$label_en"></label>
+        <label class="inline-check"><input name="node_nav_$number" type="checkbox" value="1" $checked> $nav_label</label>
+      </div>
+HTML
+    }
+
+    return '<div class="node-settings-grid">' . join('', @rows) . '</div>';
+}
+
+sub collect_nodes {
+    my %nodes;
+    for my $number (1 .. 5) {
+        my $id = safe_segment($params{"node_id_$number"} || '');
+        next if $id eq '';
+        my $label_ja = clean_text($params{"node_label_ja_$number"} || '');
+        my $label_en = clean_text($params{"node_label_en_$number"} || '');
+        $nodes{$id} = {
+            nav => bool_param("node_nav_$number"),
+            labels => {
+                ja => $label_ja ne '' ? $label_ja : $id,
+                en => $label_en ne '' ? $label_en : $id,
+            },
+        };
+    }
+    return \%nodes;
 }
 
 sub checked {
@@ -243,6 +306,19 @@ sub clean_env_name {
     my ($value) = @_;
     $value = clean_text($value);
     return $value =~ /\A[A-Za-z_][A-Za-z0-9_]*\z/ ? $value : 'MARK6_OPENAI_API_KEY';
+}
+
+sub clean_affiliate_tag {
+    my ($value) = @_;
+    $value = clean_text($value);
+    $value =~ s/[^0-9A-Za-z_-]//g;
+    return $value;
+}
+
+sub safe_segment {
+    my ($value) = @_;
+    $value = clean_text($value);
+    return $value =~ /\A[0-9A-Za-z_-]+\z/ ? $value : '';
 }
 
 sub clean_path {

@@ -18,9 +18,15 @@ write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, user
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
     site => { title => 'Before Site', language => 'ja', base_url => '' },
-    features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::false, shop => JSON::PP::false, ai => JSON::PP::false },
+    features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::false, ai => JSON::PP::false },
     display => { articles_per_page => 20, mini_articles => 15 },
-    shop => { title => 'Shop', paypal_id => '' },
+    nodes => {
+        oita360 => {
+            nav => JSON::PP::true,
+            labels => { ja => '大分360', en => 'Oita 360' },
+        },
+    },
+    kiosk => { provider => 'amazon', affiliate_tag => '' },
     ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY', api_key_file => '' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
@@ -56,6 +62,11 @@ like($settings, qr/設定/, 'settings form renders');
 like($settings, qr/Before Site/, 'settings form includes current site title');
 like($settings, qr/name="ai_model"/, 'settings form includes AI model field');
 like($settings, qr/name="ai_api_key_file"/, 'settings form includes AI key file field');
+like($settings, qr/name="amazon_affiliate_tag"/, 'settings form includes Amazon Associate tag field');
+like($settings, qr/name="node_id_1"/, 'settings form includes section ID field');
+like($settings, qr/name="node_label_en_1"/, 'settings form includes English section label field');
+unlike($settings, qr/name="feature_shop"/, 'settings form does not show old shop feature switch');
+unlike($settings, qr/name="paypal_id"/, 'settings form does not show old shop section');
 my ($csrf) = $settings =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'settings form includes csrf token');
 
@@ -72,8 +83,15 @@ my $save = run_cgi(
         mini_articles => 7,
         feature_tags => 1,
         feature_ai => 1,
-        shop_title => 'Store',
-        paypal_id => 'seller@example.test',
+        node_id_1 => 'oita360',
+        node_label_ja_1 => '大分360',
+        node_label_en_1 => 'Oita 360',
+        node_nav_1 => 1,
+        node_id_2 => 'news',
+        node_label_ja_2 => 'ニュース',
+        node_label_en_2 => 'News',
+        node_nav_2 => 1,
+        amazon_affiliate_tag => 'mark6-test-22',
         ai_model => 'custom-model',
         ai_api_key_env => 'CUSTOM_OPENAI_KEY',
         ai_api_key_file => '/home/example/.mark6_openai_key',
@@ -91,9 +109,12 @@ ok($config->{features}{tags}, 'tags feature saved true');
 ok($config->{features}{ai}, 'ai feature saved true');
 ok(!$config->{features}{newest}, 'unchecked newest saved false');
 ok(!$config->{features}{popular}, 'unchecked popular saved false');
-ok(!$config->{features}{shop}, 'unchecked shop saved false');
-is($config->{shop}{title}, 'Store', 'shop title saved');
-is($config->{shop}{paypal_id}, 'seller@example.test', 'paypal id saved');
+ok(!exists $config->{features}{shop}, 'old shop feature parameter removed');
+ok(!exists $config->{shop}, 'old shop settings removed');
+is($config->{kiosk}{provider}, 'amazon', 'Kiosk provider saved as Amazon');
+is($config->{kiosk}{affiliate_tag}, 'mark6-test-22', 'Amazon Associate tag saved');
+is($config->{nodes}{oita360}{labels}{en}, 'Oita 360', 'English section label saved');
+ok($config->{nodes}{news}{nav}, 'second section nav flag saved');
 is($config->{ai}{provider}, 'openai', 'ai provider saved');
 is($config->{ai}{model}, 'custom-model', 'ai model saved');
 is($config->{ai}{api_key_env}, 'CUSTOM_OPENAI_KEY', 'ai api key env saved');
@@ -105,6 +126,8 @@ my $public = run_cgi(
     path_info => '/en/',
 );
 like($public, qr/<title>After Site<\/title>/, 'public page uses updated site title');
+like($public, qr/href="https:\/\/example\.test\/en\/oita360\/">Oita 360<\/a>/, 'public page uses English section label in nav');
+like($public, qr/href="https:\/\/example\.test\/en\/news\/">News<\/a>/, 'public page renders second section nav link');
 
 remove_tree($root);
 done_testing;

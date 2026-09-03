@@ -507,7 +507,7 @@ button:hover,
 
 .admin-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
   padding: 14px 0;
@@ -516,8 +516,8 @@ button:hover,
 
 .admin-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 18px;
   white-space: nowrap;
 }
 
@@ -530,6 +530,18 @@ button:hover,
   grid-template-columns: repeat(4, auto) 58px auto;
   gap: 4px;
   align-items: center;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+}
+
+.row-actions form {
+  margin: 0;
 }
 
 .button.compact,
@@ -651,6 +663,11 @@ button.compact {
   gap: 10px;
 }
 
+.ai-tabbed {
+  display: grid;
+  gap: 14px;
+}
+
 .ai-toggle {
   display: flex;
   align-items: center;
@@ -663,10 +680,33 @@ button.compact {
   cursor: pointer;
 }
 
+.lang-panel > .ai-toggle {
+  width: fit-content;
+}
+
 .ai-toggle:has(input:checked) {
   border-color: var(--accent);
   background: #e9fbfd;
   color: var(--accent-strong);
+}
+
+.ai-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.ai-result-box {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.ai-result-box h3 {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .ai-apply-bar {
@@ -677,6 +717,52 @@ button.compact {
   padding: 14px;
   border: 1px solid var(--accent);
   background: #f3fcfd;
+}
+
+.ai-apply-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ai-apply-options .ai-toggle {
+  min-height: 36px;
+}
+
+.ai-kiosk-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-kiosk-list li {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.tag-lang-grid,
+.node-settings-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.node-settings-row {
+  display: grid;
+  grid-template-columns: minmax(120px, .8fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
 }
 
 .kiosk-admin-grid {
@@ -815,6 +901,24 @@ button.compact {
 
   .order-actions {
     grid-template-columns: repeat(2, auto) 58px auto;
+  }
+
+  .admin-actions,
+  .row-actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .row-actions {
+    width: 100%;
+    padding-left: 0;
+    padding-top: 10px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .node-settings-row {
+    grid-template-columns: 1fr;
   }
 
   .stat {

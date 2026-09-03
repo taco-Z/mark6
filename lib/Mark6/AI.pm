@@ -155,6 +155,24 @@ sub diagnose_seo {
     return _normalize_seo_result($result, $self->{provider}, $self->{model});
 }
 
+sub suggest_kiosk {
+    my ($self, %args) = @_;
+    my $lang = $args{lang} || ($args{article} || {})->{default_lang} || 'ja';
+    my $result = $self->_request_json(
+        system => join("\n",
+            'You suggest lightweight Kiosk search links for a generic CMS article.',
+            "Write labels and reasons in language code: $lang.",
+            'Return only one JSON object with kiosk_items.',
+            'kiosk_items must be an array of 2 to 5 objects.',
+            'Each object must have label, keyword, and reason.',
+            'Suggest broad, useful search keywords that fit the article.',
+            'Do not suggest prices, stock, specific paid placements, or products not grounded in the supplied article.',
+        ),
+        prompt => article_prompt($args{article} || {}),
+    );
+    return _normalize_kiosk_result($result, $self->{provider}, $self->{model});
+}
+
 sub _request_json {
     my ($self, %args) = @_;
     my $mock = $ENV{MARK6_AI_MOCK_RESPONSE};
@@ -337,6 +355,33 @@ sub _normalize_seo_result {
     my $base = _normalize_result($result, $provider, $model);
     $base->{diagnosis} = _clean_text($result->{diagnosis} || '');
     return $base;
+}
+
+sub _normalize_kiosk_result {
+    my ($result, $provider, $model) = @_;
+    my @items = ref($result->{kiosk_items}) eq 'ARRAY' ? @{$result->{kiosk_items}} : ();
+    my @cleaned;
+
+    for my $item (@items) {
+        next unless ref($item) eq 'HASH';
+        my $label = _clean_text($item->{label} || '');
+        my $keyword = _clean_text($item->{keyword} || '');
+        my $reason = _clean_text($item->{reason} || '');
+        next if $label eq '' && $keyword eq '';
+        push @cleaned, {
+            label   => $label ne '' ? $label : $keyword,
+            keyword => $keyword ne '' ? $keyword : $label,
+            reason  => $reason,
+        };
+    }
+    @cleaned = @cleaned[0 .. 4] if @cleaned > 5;
+
+    return {
+        kiosk_items       => \@cleaned,
+        provider          => $provider,
+        model             => $model,
+        last_processed_at => _iso_now(),
+    };
 }
 
 sub _strip_html {
