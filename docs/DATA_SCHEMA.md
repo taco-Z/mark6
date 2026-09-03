@@ -18,16 +18,15 @@ MARK6 stores all CMS data as UTF-8 JSON.
     "tags": true,
     "newest": true,
     "popular": true,
-    "shop": false,
     "ai": false
   },
   "display": {
     "articles_per_page": 20,
     "mini_articles": 15
   },
-  "shop": {
-    "title": "Shop",
-    "paypal_id": ""
+  "kiosk": {
+    "provider": "amazon",
+    "affiliate_tag": ""
   }
 }
 ```
@@ -63,10 +62,20 @@ MARK6 stores all CMS data as UTF-8 JSON.
   "writer_id": "",
   "created_at": "",
   "updated_at": "",
+  "sort_order": 10,
   "ai": {
     "summary": "",
     "suggested_tags": [],
     "last_processed_at": ""
+  },
+  "kiosk": {
+    "enabled": true,
+    "items": [
+      {
+        "label": "Search label",
+        "keyword": "search keyword"
+      }
+    ]
   },
   "source": {
     "mark5_id": "",
@@ -74,6 +83,10 @@ MARK6 stores all CMS data as UTF-8 JSON.
   }
 }
 ```
+
+`sort_order` is optional. Lower numbers appear first in article lists. Existing articles without `sort_order` continue to fall back to the legacy newest-first order until an admin reorder operation writes explicit values.
+
+`kiosk` is a lightweight post-article search link component. MARK6 does not store product price, stock, reviews, or images. Site-specific product wording belongs in each article JSON item; core rendering only checks `enabled`, reads `label` and `keyword`, URL-encodes the keyword, and generates an Amazon search URL. When `dat/config.json` has `kiosk.affiliate_tag`, MARK6 appends it as the Amazon `tag` parameter.
 
 ## Users
 
@@ -124,4 +137,3 @@ dat/logs/audit.jsonl
 ```
 
 Each line is one JSON object.
-

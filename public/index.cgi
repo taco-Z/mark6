@@ -241,7 +241,6 @@ sub load_articles {
     closedir $dh;
 
     my $limit = bounded_number($args{limit}, 0, 0, 100);
-    @files = sort article_file_sort @files if $limit;
 
     my @articles;
     for my $file (@files) {
@@ -249,10 +248,11 @@ sub load_articles {
         next unless $article && ($article->{status} || '') eq 'published';
         Mark6::Article::normalize($article, $config);
         push @articles, $article;
-        last if $limit && @articles >= $limit;
     }
 
-    return sort { ($b->{id} || 0) <=> ($a->{id} || 0) } @articles;
+    @articles = sort article_sort @articles;
+    @articles = @articles[0 .. $limit - 1] if $limit && @articles > $limit;
+    return @articles;
 }
 
 sub find_article {
@@ -544,16 +544,20 @@ sub bounded_number {
     return int($value);
 }
 
-sub article_file_sort {
-    my $aid = article_file_id($a);
-    my $bid = article_file_id($b);
-    return $bid <=> $aid || $b cmp $a if $aid ne '' && $bid ne '';
-    return $b cmp $a;
+sub article_sort {
+    my $a_order = article_sort_order($a);
+    my $b_order = article_sort_order($b);
+    my $a_has_order = defined($a->{sort_order}) && $a->{sort_order} =~ /\A[0-9]+\z/;
+    my $b_has_order = defined($b->{sort_order}) && $b->{sort_order} =~ /\A[0-9]+\z/;
+    return $a_order <=> $b_order if $a_has_order && $b_has_order && $a_order != $b_order;
+    return -1 if $a_has_order && !$b_has_order;
+    return 1 if !$a_has_order && $b_has_order;
+    return ($b->{id} || 0) <=> ($a->{id} || 0);
 }
 
-sub article_file_id {
-    my ($file) = @_;
-    return $1 if defined $file && $file =~ /\A([0-9]+)\.json\z/;
+sub article_sort_order {
+    my ($article) = @_;
+    return int($article->{sort_order}) if defined($article->{sort_order}) && $article->{sort_order} =~ /\A[0-9]+\z/;
     return '';
 }
 

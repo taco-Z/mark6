@@ -525,6 +525,30 @@ button:hover,
   margin: 0;
 }
 
+.order-actions {
+  display: inline-grid;
+  grid-template-columns: repeat(4, auto) 58px auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.button.compact,
+button.compact {
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: .82rem;
+}
+
+.order-position {
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: .82rem;
+}
+
 .admin-form {
   display: grid;
   gap: 16px;
@@ -787,6 +811,10 @@ button:hover,
 
   .ai-apply-bar {
     grid-template-columns: 1fr;
+  }
+
+  .order-actions {
+    grid-template-columns: repeat(2, auto) 58px auto;
   }
 
   .stat {

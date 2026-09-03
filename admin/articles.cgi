@@ -150,6 +150,18 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
+    if ($command eq 'reorder') {
+        my $error = run_admin_action(sub {
+            reorder_articles($params{id} || '', $params{order_action} || '', $params{order_position} || '');
+        });
+        if ($error) {
+            render_page($lang->t('admin.article.reorder_error', 'Reorder Error'), qq|<p class="error">$error</p>|);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi');
+        exit;
+    }
+
     if ($command eq 'delete') {
         my $error = run_admin_action(sub { delete_article($params{id} || '') });
         if ($error) {
@@ -194,22 +206,40 @@ sub article_row {
     my $title = Mark6::CGI::escape_html(Mark6::Article::title_for($article, Mark6::Article::default_lang($article, $config), $config));
     my $status = Mark6::CGI::escape_html($article->{status} || 'draft');
     my $date = Mark6::CGI::escape_html(format_date($article->{created_at} || ''));
+    my $sort_order = h(article_sort_order($article));
     my $translations = translation_status_summary($article);
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
     my $view_url = Mark6::CGI::escape_html(public_article_url($article));
     my $view_label = h($lang->t('admin.common.view', 'View'));
     my $edit_label = h($lang->t('admin.common.edit', 'Edit'));
     my $delete_label = h($lang->t('admin.common.delete', 'Delete'));
+    my $order_label = h($lang->t('admin.article.order', 'Order'));
+    my $top_label = h($lang->t('admin.article.order_top', 'Top'));
+    my $up_label = h($lang->t('admin.article.order_up', 'Up'));
+    my $down_label = h($lang->t('admin.article.order_down', 'Down'));
+    my $bottom_label = h($lang->t('admin.article.order_bottom', 'Bottom'));
+    my $set_label = h($lang->t('admin.article.order_set', 'Set'));
     my $confirm_delete = js_string($lang->t('admin.article.confirm_delete', 'Delete this article?'));
 
     return <<"HTML";
 <article class="admin-row">
   <div>
     <strong>$title</strong>
-    <div class="meta">$status / $date / ID $id</div>
+    <div class="meta">$status / $date / ID $id / $order_label $sort_order</div>
     <div class="meta translation-state">$translations</div>
   </div>
   <div class="admin-actions">
+    <form class="order-actions" method="post" action="articles.cgi">
+      <input type="hidden" name="command" value="reorder">
+      <input type="hidden" name="id" value="$id">
+      <input type="hidden" name="csrf_token" value="$csrf">
+      <button class="button secondary compact" type="submit" name="order_action" value="top">$top_label</button>
+      <button class="button secondary compact" type="submit" name="order_action" value="up">$up_label</button>
+      <button class="button secondary compact" type="submit" name="order_action" value="down">$down_label</button>
+      <button class="button secondary compact" type="submit" name="order_action" value="bottom">$bottom_label</button>
+      <input class="order-position" name="order_position" type="number" min="1" value="$sort_order">
+      <button class="button secondary compact" type="submit" name="order_action" value="set">$set_label</button>
+    </form>
     <a href="$view_url" target="_blank" rel="noopener">$view_label</a>
     <a href="articles.cgi?command=edit&amp;id=$id">$edit_label</a>
     <form method="post" action="articles.cgi" onsubmit="return confirm('$confirm_delete');">
@@ -349,6 +379,7 @@ sub save_article {
         writer_id  => $existing->{writer_id} || $user->{id},
         created_at => $existing->{created_at} || $now,
         updated_at => $now,
+        sort_order => existing_sort_order($existing),
         ai         => $existing->{ai} || {
             summary           => '',
             suggested_tags    => [],
@@ -501,6 +532,50 @@ sub delete_article {
     unlink $path or die "Cannot delete article JSON $path: $!" if -e $path;
 }
 
+sub reorder_articles {
+    my ($id, $action, $position) = @_;
+    die "Invalid article id" unless $id =~ /\A[0-9A-Za-z_-]+\z/;
+    die "Invalid order action" unless $action =~ /\A(?:top|up|down|bottom|set)\z/;
+
+    my @articles = grep { ($_->{status} || '') ne 'deleted' } load_articles();
+    return unless @articles > 1;
+
+    my ($index) = grep { ($articles[$_]{id} || '') eq $id } 0 .. $#articles;
+    die "Article not found" unless defined $index;
+
+    my $article = splice @articles, $index, 1;
+    my $target = $index;
+    if ($action eq 'top') {
+        $target = 0;
+    }
+    elsif ($action eq 'up') {
+        $target = $index > 0 ? $index - 1 : 0;
+    }
+    elsif ($action eq 'down') {
+        $target = $index < @articles ? $index + 1 : scalar @articles;
+    }
+    elsif ($action eq 'bottom') {
+        $target = scalar @articles;
+    }
+    elsif ($action eq 'set') {
+        die "Invalid order position" unless defined $position && $position =~ /\A[0-9]+\z/;
+        $target = int($position) - 1;
+        $target = 0 if $target < 0;
+        $target = scalar @articles if $target > @articles;
+    }
+
+    splice @articles, $target, 0, $article;
+    for my $i (0 .. $#articles) {
+        my $item = $articles[$i];
+        $item->{sort_order} = ($i + 1) * 10;
+        $item->{updated_at} = iso_now();
+        my $item_id = $item->{id} || '';
+        die "Invalid article id" unless $item_id =~ /\A[0-9A-Za-z_-]+\z/;
+        my $path = $store->write_json($item, 'dat', 'articles', "$item_id.json");
+        die "Article JSON was not updated at $path" unless -e $path;
+    }
+}
+
 sub load_articles {
     my $dir = "$ROOT/dat/articles";
     return () unless -d $dir;
@@ -515,7 +590,7 @@ sub load_articles {
         push @articles, $article if $article;
     }
 
-    return sort { ($b->{id} || 0) <=> ($a->{id} || 0) } @articles;
+    return sort article_sort @articles;
 }
 
 sub load_article {
@@ -1001,6 +1076,29 @@ sub parse_tags {
         $tag;
     } split /,/, $value;
     return \@tags;
+}
+
+sub article_sort {
+    my $a_order = article_sort_order($a);
+    my $b_order = article_sort_order($b);
+    my $a_has_order = defined($a->{sort_order}) && $a->{sort_order} =~ /\A[0-9]+\z/;
+    my $b_has_order = defined($b->{sort_order}) && $b->{sort_order} =~ /\A[0-9]+\z/;
+    return $a_order <=> $b_order if $a_has_order && $b_has_order && $a_order != $b_order;
+    return -1 if $a_has_order && !$b_has_order;
+    return 1 if !$a_has_order && $b_has_order;
+    return ($b->{id} || 0) <=> ($a->{id} || 0);
+}
+
+sub article_sort_order {
+    my ($article) = @_;
+    return int($article->{sort_order}) if defined($article->{sort_order}) && $article->{sort_order} =~ /\A[0-9]+\z/;
+    return '';
+}
+
+sub existing_sort_order {
+    my ($article) = @_;
+    return int($article->{sort_order}) if defined($article->{sort_order}) && $article->{sort_order} =~ /\A[0-9]+\z/;
+    return JSON::PP::null;
 }
 
 sub normalize_status {

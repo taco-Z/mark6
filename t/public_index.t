@@ -78,6 +78,7 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
     },
     tags => ['News'],
     image => '',
+    sort_order => 10,
     kiosk => {
         enabled => JSON::PP::true,
         items => [
@@ -100,8 +101,8 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
     created_at => '2013-08-02T13:56:45Z',
 });
 
-write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451804.json'), {
-    id => '1375451804',
+write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451806.json'), {
+    id => '1375451806',
     type => 'article',
     status => 'published',
     default_lang => 'ja',
@@ -116,6 +117,7 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451804.json'), {
     },
     tags => ['News'],
     image => 'https://example.com/older.jpg',
+    sort_order => 20,
     kiosk => {
         enabled => JSON::PP::false,
         items => [

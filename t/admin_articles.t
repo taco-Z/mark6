@@ -97,6 +97,8 @@ my $list = run_cgi(
 );
 like($list, qr/テスト記事/, 'saved article appears in admin list');
 like($list, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/" target="_blank" rel="noopener"/, 'view link opens public article in new tab');
+like($list, qr/name="order_action" value="top"/, 'article list renders move-to-top action');
+like($list, qr/name="order_position" type="number"/, 'article list renders direct order position field');
 like($list, qr/onsubmit="return confirm\('この記事を削除しますか？'\);"/, 'delete confirms before submit');
 
 my $saved_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
@@ -111,6 +113,53 @@ is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default lan
 ok($saved_article->{kiosk}{enabled}, 'Kiosk enabled flag saved');
 is($saved_article->{kiosk}{items}[0]{label}, 'Guide Book', 'Kiosk item label saved');
 is($saved_article->{kiosk}{items}[0]{keyword}, 'travel guide', 'Kiosk item keyword saved');
+
+my $second_save = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'save',
+        id         => 'second-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'second-post',
+        title_ja   => '2番目の記事',
+        title_en   => 'Second article',
+        status     => 'published',
+        tags       => 'News',
+        image      => '',
+        description_ja => '<p>2番目の紹介文</p>',
+        body_ja    => '<p>2番目の本文</p>',
+        description_en => '<p>Second summary</p>',
+        body_en    => '<p>Second body</p>',
+    ),
+);
+like($second_save, qr/Location: articles\.cgi/, 'second article save redirects to article list');
+
+my $reorder = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'reorder',
+        id         => 'second-article',
+        csrf_token => $csrf,
+        order_action => 'top',
+    ),
+);
+like($reorder, qr/Location: articles\.cgi/, 'reorder redirects to article list');
+my $reordered_first = read_json(File::Spec->catfile($root, 'dat', 'articles', 'second-article.json'));
+my $reordered_second = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($reordered_first->{sort_order}, 10, 'move-to-top assigns first sort order');
+is($reordered_second->{sort_order}, 20, 'move-to-top assigns following sort order');
+my $reordered_list = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'GET',
+    cookie => "mark6_session=$session_id",
+);
+like($reordered_list, qr/2番目の記事[\s\S]+テスト記事/, 'admin list follows custom article order');
 
 {
     local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
