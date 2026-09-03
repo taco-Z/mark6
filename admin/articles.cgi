@@ -69,6 +69,20 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
+    if ($command eq 'ai_run_selected') {
+        my $article_id = '';
+        my $error = run_admin_action(sub {
+            $article_id = save_article();
+            perform_ai_batch($article_id);
+        });
+        if ($error) {
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=selected_done#ai-assist');
+        exit;
+    }
+
     if ($command =~ /\Aai_(?:suggest|draft|translate|rewrite|seo|seo_rewrite)\z/) {
         my $article_id = '';
         my $error = run_admin_action(sub {
@@ -81,6 +95,29 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         }
         my $notice_action = $command eq 'ai_suggest' ? 'done' : $command;
         Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . '#ai-assist');
+        exit;
+    }
+
+    if ($command eq 'ai_apply_selected') {
+        my $article_id = '';
+        my $notice_action = 'applied';
+        my $error = run_admin_action(sub {
+            $article_id = save_article();
+            my $action = $params{ai_apply_result} || '';
+            if ($action eq 'tags') {
+                apply_ai_tags($article_id);
+                $notice_action = 'tags_applied';
+            }
+            else {
+                die "Choose an AI result to apply" unless $action =~ /\A(?:draft|rewrite|seo_rewrite|translation)\z/;
+                apply_ai_result($article_id, $action);
+            }
+        });
+        if ($error) {
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            exit;
+        }
+        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . '#article-editor');
         exit;
     }
 
@@ -196,6 +233,7 @@ sub render_form {
     my $image = Mark6::CGI::escape_html($article->{image} || '');
     my $default_lang = Mark6::CGI::escape_html(Mark6::Article::default_lang($article, $config));
     my $language_fields = language_fields($article);
+    my $kiosk_fields = kiosk_fields($article);
     my $media_options = media_options($article->{image} || '');
     my $ai_panel = ai_panel($article);
     my $csrf = Mark6::CGI::escape_html($session->{csrf_token} || '');
@@ -250,9 +288,28 @@ sub render_form {
     </label>
     <label>$image_path_label<br><input name="image_manual" type="text" value="$image"></label>
     $language_fields
+    $kiosk_fields
     $ai_panel
     <button type="submit">$save_label</button>
   </form>
+  <script>
+  (() => {
+    for (const group of document.querySelectorAll('.language-editor')) {
+      const tabs = Array.from(group.querySelectorAll('[data-lang-tab]'));
+      const panels = Array.from(group.querySelectorAll('.lang-panel'));
+      for (const tab of tabs) {
+        tab.addEventListener('click', () => {
+          for (const item of tabs) item.classList.toggle('active', item === tab);
+          for (const panel of panels) {
+            const active = panel.id === tab.dataset.langTab;
+            panel.hidden = !active;
+            panel.classList.toggle('active', active);
+          }
+        });
+      }
+    }
+  })();
+  </script>
 </section>
 HTML
 }
@@ -298,6 +355,7 @@ sub save_article {
             seo_description   => '',
             last_processed_at => '',
         },
+        kiosk      => collect_kiosk($existing),
     };
 
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
@@ -352,6 +410,26 @@ sub perform_ai_action {
 
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
     die "Article JSON was not updated at $path" unless -e $path;
+}
+
+sub perform_ai_batch {
+    my ($id) = @_;
+    my @commands = selected_ai_commands();
+    die "Choose at least one AI action" unless @commands;
+
+    for my $command (@commands) {
+        perform_ai_action($id, $command);
+    }
+}
+
+sub selected_ai_commands {
+    my @commands;
+    push @commands, 'ai_draft' if ($params{ai_run_draft} || '') eq '1';
+    push @commands, 'ai_translate' if ($params{ai_run_translate} || '') eq '1';
+    push @commands, 'ai_rewrite' if ($params{ai_run_rewrite} || '') eq '1';
+    push @commands, 'ai_seo' if ($params{ai_run_seo} || '') eq '1';
+    push @commands, 'ai_seo_rewrite' if ($params{ai_run_seo_rewrite} || '') eq '1';
+    return @commands;
 }
 
 sub apply_ai_result {
@@ -467,8 +545,12 @@ sub blank_article {
 
 sub language_fields {
     my ($article) = @_;
-    return join "\n", map {
-        my $lang_code = $_;
+    my $legend = h($lang->t('admin.article.content', 'Content'));
+    my $default_lang = Mark6::Article::default_lang($article, $config);
+    my @tab_controls;
+    my @panels;
+
+    for my $lang_code (@article_langs) {
         my $entry = $article->{langs}{$lang_code} || {};
         my $label = uc($lang_code) . ' - ' . translation_state_label($article, $lang_code);
         my $title = Mark6::CGI::escape_html($entry->{title} || '');
@@ -477,16 +559,67 @@ sub language_fields {
         my $title_label = h($lang->t('admin.article.field_title', 'Title'));
         my $description_label = h($lang->t('admin.article.field_description_html', 'Description HTML'));
         my $body_label = h($lang->t('admin.article.field_body_html', 'Body HTML'));
+        my $active = $lang_code eq $default_lang ? ' active' : '';
+        my $hidden = $lang_code eq $default_lang ? '' : ' hidden';
+        my $tab_id = Mark6::CGI::escape_html("lang-panel-$lang_code");
 
-        <<"HTML";
-    <fieldset>
-      <legend>$label</legend>
-      <label>$title_label<br><input name="title_$lang_code" type="text" value="$title"></label>
-      <label>$description_label<br><textarea name="description_$lang_code" rows="5">$description</textarea></label>
-      <label>$body_label<br><textarea name="body_$lang_code" rows="12">$body</textarea></label>
+        push @tab_controls, qq|      <button class="lang-tab$active" type="button" data-lang-tab="$tab_id">$label</button>|;
+        push @panels, <<"HTML";
+      <section id="$tab_id" class="lang-panel$active"$hidden>
+        <label>$title_label<br><input name="title_$lang_code" type="text" value="$title"></label>
+        <label>$description_label<br><textarea name="description_$lang_code" rows="5">$description</textarea></label>
+        <label>$body_label<br><textarea name="body_$lang_code" rows="12">$body</textarea></label>
+      </section>
+HTML
+    }
+
+    return <<"HTML";
+    <fieldset class="language-editor">
+      <legend>$legend</legend>
+      <div class="lang-tabs" role="tablist">
+@{[join "\n", @tab_controls]}
+      </div>
+      <div class="lang-panels">
+@{[join "\n", @panels]}
+      </div>
     </fieldset>
 HTML
-    } @article_langs;
+}
+
+sub kiosk_fields {
+    my ($article) = @_;
+    my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+    my @items = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
+    my $checked = $kiosk->{enabled} ? 'checked' : '';
+    my $legend = h($lang->t('admin.article.kiosk', 'Kiosk'));
+    my $enabled_label = h($lang->t('admin.article.kiosk_enabled', 'Show Kiosk links after this article'));
+    my $label_text = h($lang->t('admin.article.kiosk_label', 'Label'));
+    my $keyword_text = h($lang->t('admin.article.kiosk_keyword', 'Keyword'));
+    my $help = h($lang->t('admin.article.kiosk_help', 'Creates search links only. Prices, stock, reviews, and product images are not stored.'));
+    my @rows;
+
+    for my $index (0 .. 4) {
+        my $item = ref($items[$index]) eq 'HASH' ? $items[$index] : {};
+        my $number = $index + 1;
+        my $label = h($item->{label} || '');
+        my $keyword = h($item->{keyword} || '');
+        push @rows, <<"HTML";
+      <div class="kiosk-admin-row">
+        <label>$label_text $number<br><input name="kiosk_label_$number" type="text" value="$label"></label>
+        <label>$keyword_text $number<br><input name="kiosk_keyword_$number" type="text" value="$keyword"></label>
+      </div>
+HTML
+    }
+
+    return <<"HTML";
+    <fieldset>
+      <legend>$legend</legend>
+      <label><input name="kiosk_enabled" type="checkbox" value="1" $checked> $enabled_label</label>
+      <p class="meta">$help</p>
+      <div class="kiosk-admin-grid">
+@{[join '', @rows]}      </div>
+    </fieldset>
+HTML
 }
 
 sub translation_status_summary {
@@ -584,6 +717,9 @@ sub ai_panel {
     my $seo_rewrite_label = h($lang->t('admin.ai.seo_rewrite', 'SEO rewrite'));
     my $tag_add_label = h($lang->t('admin.ai.add_tags', 'Add suggested tags'));
     my $apply_label = h($lang->t('admin.ai.apply', 'Apply to article'));
+    my $run_selected_label = h($lang->t('admin.ai.run_selected', 'Run selected AI actions'));
+    my $apply_selected_label = h($lang->t('admin.ai.apply_selected', 'Apply selected AI result'));
+    my $apply_target_label = h($lang->t('admin.ai.apply_target', 'Apply target'));
     my $target_label = h($lang->t('admin.ai.target_lang', 'Translation language'));
     my $draft = $ai->{draft} || {};
     my $rewrite = $ai->{rewrite} || {};
@@ -607,14 +743,33 @@ sub ai_panel {
     my $translation_meta = ai_result_meta($translation);
     my $seo_meta = ai_result_meta($seo);
     my $has_seo = ($seo->{last_processed_at} || '') ne '' || ($seo->{diagnosis} || '') ne '' || ($seo->{seo_description} || '') ne '' || @{$seo->{suggested_tags} || []};
-    my $seo_rewrite_action = $has_seo ? qq|<button type="submit" name="command" value="ai_seo_rewrite">$seo_rewrite_label</button>| : '';
-    my $seo_tag_action = @{$seo->{suggested_tags} || []} ? qq|<button type="submit" name="command" value="ai_apply_tags">$tag_add_label</button>| : '';
+    my $apply_options = ai_apply_options(
+        draft       => $draft,
+        rewrite     => $rewrite,
+        seo_rewrite => $seo_rewrite,
+        translation => $translation,
+        seo         => $seo,
+        labels      => {
+            draft       => $draft_label,
+            rewrite     => $rewrite_label,
+            seo_rewrite => $seo_rewrite_label,
+            translation => $translate_label,
+            tags        => $tag_add_label,
+        },
+    );
+    my $apply_panel = $apply_options ne '' ? <<"HTML" : '';
+      <div class="ai-apply-bar">
+        <label>$apply_target_label<br>
+          <select name="ai_apply_result">$apply_options</select>
+        </label>
+        <button type="submit" name="command" value="ai_apply_selected">$apply_selected_label</button>
+      </div>
+HTML
     my $seo_rewrite_panel = $has_seo ? <<"HTML" : '';
       <fieldset>
         <legend>$seo_rewrite_label</legend>
         <textarea rows="8" readonly>$seo_rewrite_body</textarea>
         $seo_rewrite_meta
-        <button type="submit" name="command" value="ai_apply_seo_rewrite">$apply_label</button>
       </fieldset>
 HTML
 
@@ -622,26 +777,28 @@ HTML
     <fieldset id="ai-assist">
       <legend>$legend</legend>
       <p class="meta">$help</p>
-      <div class="admin-toolbar">
-        <button type="submit" name="command" value="ai_draft">$draft_label</button>
-        <button type="submit" name="command" value="ai_rewrite">$rewrite_label</button>
-        <button type="submit" name="command" value="ai_seo">$seo_label</button>
+      <div class="ai-action-grid">
+        <label class="ai-toggle"><input name="ai_run_draft" type="checkbox" value="1"> $draft_label</label>
+        <label class="ai-toggle"><input name="ai_run_translate" type="checkbox" value="1"> $translate_label</label>
+        <label class="ai-toggle"><input name="ai_run_rewrite" type="checkbox" value="1"> $rewrite_label</label>
+        <label class="ai-toggle"><input name="ai_run_seo" type="checkbox" value="1"> $seo_label</label>
+        <label class="ai-toggle"><input name="ai_run_seo_rewrite" type="checkbox" value="1"> $seo_rewrite_label</label>
       </div>
       <label>$target_label<br>
         <select name="ai_target_lang">$target_options</select>
       </label>
-      <button type="submit" name="command" value="ai_translate">$translate_label</button>
+      <div class="admin-toolbar">
+        <button type="submit" name="command" value="ai_run_selected">$run_selected_label</button>
+      </div>
       <fieldset>
         <legend>$draft_label</legend>
         <textarea rows="8" readonly>$draft_body</textarea>
         $draft_meta
-        <button type="submit" name="command" value="ai_apply_draft">$apply_label</button>
       </fieldset>
       <fieldset>
         <legend>$rewrite_label</legend>
         <textarea rows="8" readonly>$rewrite_body</textarea>
         $rewrite_meta
-        <button type="submit" name="command" value="ai_apply_rewrite">$apply_label</button>
       </fieldset>
       <fieldset>
         <legend>$translate_label</legend>
@@ -649,7 +806,6 @@ HTML
         <label>Description HTML<br><textarea rows="4" readonly>$translation_description</textarea></label>
         <label>Body HTML<br><textarea rows="8" readonly>$translation_body</textarea></label>
         $translation_meta
-        <button type="submit" name="command" value="ai_apply_translation">$apply_label</button>
       </fieldset>
       <fieldset>
         <legend>$seo_label</legend>
@@ -657,12 +813,30 @@ HTML
         <label>Suggested tags<br><input type="text" value="$seo_tags" readonly onclick="this.select()"></label>
         <label>Diagnosis<br><textarea rows="4" readonly>$seo_diagnosis</textarea></label>
         $seo_meta
-        $seo_rewrite_action
-        $seo_tag_action
       </fieldset>
       $seo_rewrite_panel
+      $apply_panel
     </fieldset>
 HTML
+}
+
+sub ai_apply_options {
+    my (%args) = @_;
+    my $labels = $args{labels} || {};
+    my @options;
+
+    push @options, [draft => $labels->{draft}] if (($args{draft} || {})->{body} || '') ne '';
+    push @options, [rewrite => $labels->{rewrite}] if (($args{rewrite} || {})->{body} || '') ne '';
+    push @options, [seo_rewrite => $labels->{seo_rewrite}] if (($args{seo_rewrite} || {})->{body} || '') ne '';
+    my $translation = $args{translation} || {};
+    push @options, [translation => $labels->{translation}] if ($translation->{body} || $translation->{title} || '') ne '';
+    my $suggested = (($args{seo} || {})->{suggested_tags}) || [];
+    push @options, [tags => $labels->{tags}] if ref($suggested) eq 'ARRAY' && @{$suggested};
+
+    return join "\n", map {
+        my ($value, $label) = @{$_};
+        qq|<option value="$value">$label</option>|;
+    } @options;
 }
 
 sub ai_result_meta {
@@ -704,6 +878,7 @@ sub ai_notice {
         ai_rewrite   => 'admin.ai.rewrite_done',
         ai_seo       => 'admin.ai.seo_done',
         ai_seo_rewrite => 'admin.ai.seo_rewrite_done',
+        selected_done => 'admin.ai.selected_done',
         tags_applied => 'admin.ai.tags_applied',
         ai_suggest   => 'admin.ai.done',
         applied      => 'admin.ai.applied',
@@ -732,6 +907,38 @@ sub collect_langs {
         };
     }
     return \%langs;
+}
+
+sub collect_kiosk {
+    my ($existing) = @_;
+    my $has_kiosk_params = ($params{kiosk_enabled} || '') ne '';
+    for my $number (1 .. 5) {
+        $has_kiosk_params ||= exists $params{"kiosk_label_$number"} || exists $params{"kiosk_keyword_$number"};
+    }
+    return $existing->{kiosk} if !$has_kiosk_params && ref($existing->{kiosk}) eq 'HASH';
+
+    my @items;
+    for my $number (1 .. 5) {
+        my $label = clean_text($params{"kiosk_label_$number"} || '');
+        my $keyword = clean_text($params{"kiosk_keyword_$number"} || '');
+        next if $label eq '' && $keyword eq '';
+        push @items, {
+            label   => $label ne '' ? $label : $keyword,
+            keyword => $keyword ne '' ? $keyword : $label,
+        };
+    }
+
+    return {
+        enabled => ($params{kiosk_enabled} || '') eq '1' ? JSON::PP::true : JSON::PP::false,
+        items   => \@items,
+    };
+}
+
+sub clean_text {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/^\s+|\s+$//g;
+    return $value;
 }
 
 sub normalize_lang {

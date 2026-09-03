@@ -46,14 +46,19 @@ my $new_form = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($new_form, qr/新規記事/, 'new article form renders');
+like($new_form, qr/class="lang-tab active" type="button" data-lang-tab="lang-panel-ja"/, 'form renders language tabs');
 like($new_form, qr/name="title_ja"/, 'form renders Japanese title field');
 like($new_form, qr/name="title_en"/, 'form renders English title field');
-like($new_form, qr/value="ai_draft"/, 'form renders AI body draft action');
-like($new_form, qr/value="ai_translate"/, 'form renders AI translation action');
-like($new_form, qr/value="ai_rewrite"/, 'form renders AI rewrite action');
-like($new_form, qr/value="ai_seo"/, 'form renders AI SEO diagnosis action');
+like($new_form, qr/name="ai_run_draft" type="checkbox" value="1"/, 'form renders AI body draft toggle');
+like($new_form, qr/name="ai_run_translate" type="checkbox" value="1"/, 'form renders AI translation toggle');
+like($new_form, qr/name="ai_run_rewrite" type="checkbox" value="1"/, 'form renders AI rewrite toggle');
+like($new_form, qr/name="ai_run_seo" type="checkbox" value="1"/, 'form renders AI SEO diagnosis toggle');
+like($new_form, qr/name="command" value="ai_run_selected"/, 'form renders selected AI action submit');
 like($new_form, qr/id="ai-assist"/, 'form provides an AI action return anchor');
 like($new_form, qr/id="article-editor"/, 'form provides an article editor return anchor');
+like($new_form, qr/name="kiosk_enabled"/, 'form renders Kiosk toggle');
+like($new_form, qr/name="kiosk_label_1"/, 'form renders Kiosk label field');
+like($new_form, qr/name="kiosk_keyword_1"/, 'form renders Kiosk keyword field');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
@@ -78,6 +83,9 @@ my $save = run_cgi(
         body_ja    => '<p>本文</p>',
         description_en => '<p>Summary</p>',
         body_en    => '<p>Body</p>',
+        kiosk_enabled => 1,
+        kiosk_label_1 => 'Guide Book',
+        kiosk_keyword_1 => 'travel guide',
     ),
 );
 like($save, qr/Location: articles\.cgi/, 'save redirects to article list');
@@ -100,6 +108,9 @@ is($saved_article->{translation_status}{en}{state}, 'translated', 'newly saved E
 is($saved_article->{langs}{ja}{title}, 'テスト記事', 'Japanese title saved');
 is($saved_article->{langs}{en}{title}, 'Test article', 'English title saved');
 is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default language');
+ok($saved_article->{kiosk}{enabled}, 'Kiosk enabled flag saved');
+is($saved_article->{kiosk}{items}[0]{label}, 'Guide Book', 'Kiosk item label saved');
+is($saved_article->{kiosk}{items}[0]{keyword}, 'travel guide', 'Kiosk item keyword saved');
 
 {
     local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
@@ -138,6 +149,71 @@ is($ai_article->{ai}{seo_description}, 'AI SEO description', 'AI SEO description
 is_deeply($ai_article->{ai}{suggested_tags}, ['Beppu', 'Station', 'Travel'], 'AI suggested tags saved');
 is($ai_article->{ai}{model}, 'test-model', 'AI model saved');
 like($ai_article->{ai}{last_processed_at}, qr/\A\d{4}-\d{2}-\d{2}T/, 'AI timestamp saved');
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
+        body => '<p>AI batch body</p>',
+        seo_description => 'AI batch SEO description',
+        suggested_tags => ['Batch', 'Travel'],
+        diagnosis => 'Add more local context.',
+    });
+    my $batch = run_cgi(
+        script => File::Spec->catfile('admin', 'articles.cgi'),
+        method => 'POST',
+        cookie => "mark6_session=$session_id",
+        body   => form_data(
+            command    => 'ai_run_selected',
+            id         => 'test-article',
+            csrf_token => $csrf,
+            default_lang => 'ja',
+            node       => 'oita360',
+            slug       => 'beppu-station',
+            title_ja   => $saved_article->{langs}{ja}{title},
+            title_en   => 'Test article',
+            status     => 'published',
+            tags       => 'News, Perl',
+            image      => '',
+            description_ja => $saved_article->{langs}{ja}{description},
+            body_ja    => $saved_article->{langs}{ja}{body},
+            description_en => '<p>Summary</p>',
+            body_en    => '<p>Body</p>',
+            ai_run_draft => 1,
+            ai_run_seo => 1,
+        ),
+    );
+    like($batch, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=selected_done\#ai-assist/, 'selected AI actions return to the AI action panel');
+}
+
+my $batch_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($batch_article->{ai}{draft}{body}, '<p>AI batch body</p>', 'selected AI action saves body draft');
+is($batch_article->{ai}{seo}{seo_description}, 'AI batch SEO description', 'selected AI action saves SEO diagnosis');
+
+my $apply_selected = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body   => form_data(
+        command    => 'ai_apply_selected',
+        id         => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node       => 'oita360',
+        slug       => 'beppu-station',
+        title_ja   => $saved_article->{langs}{ja}{title},
+        title_en   => 'Test article',
+        status     => 'published',
+        tags       => 'News, Perl',
+        image      => '',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja    => $saved_article->{langs}{ja}{body},
+        description_en => '<p>Summary</p>',
+        body_en    => '<p>Body</p>',
+        ai_apply_result => 'draft',
+    ),
+);
+like($apply_selected, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=applied\#article-editor/, 'selected AI apply returns to the article editor');
+my $applied_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($applied_article->{langs}{ja}{body}, '<p>AI batch body</p>', 'selected AI apply updates the default language body');
 
 $ai_article->{ai}{seo} = {
     suggested_tags => ['Perl', 'Travel', 'travel', 'Beppu'],
@@ -180,6 +256,9 @@ my $public = run_cgi(
 like($public, qr/テスト記事/, 'saved article appears publicly');
 like($public, qr/本文/, 'public detail renders body');
 
+like($public, qr/<span class="kiosk-label">Guide Book<\/span>/, 'public detail renders saved Kiosk link');
+like($public, qr/<span class="kiosk-keyword">検索: travel guide<\/span>/, 'public detail renders Kiosk keyword note');
+like($public, qr{https://www\.amazon\.co\.jp/s\?k=travel%20guide}, 'public detail renders encoded Kiosk search URL');
 like($public, qr{src="https://img\.youtube\.com/vi/Jce1N0hRfJc/hqdefault\.jpg"}, 'public detail renders external image URL');
 like($public, qr{<meta property="og:image" content="https://img\.youtube\.com/vi/Jce1N0hRfJc/hqdefault\.jpg">}, 'public detail uses external image URL for Open Graph');
 

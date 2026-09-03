@@ -25,7 +25,7 @@ sub render_page {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$safe_title - MARK6 $admin_title</title>
   <link rel="icon" href="../public/assets/img/mark6-icon.svg?v=2" type="image/svg+xml">
-  <link rel="stylesheet" href="../public/assets/css/mark6.css?v=2">
+  <link rel="stylesheet" href="../public/assets/css/mark6.css?v=3">
 </head>
 <body class="admin-body">
   <header class="site-header admin-header">
@@ -52,6 +52,7 @@ sub admin_nav {
         [dashboard => 'admin.nav.dashboard', 'Dashboard', 'index.cgi'],
         [home      => 'admin.nav.home',      'Home',      'home.cgi'],
         [articles  => 'admin.nav.articles',  'Articles',  'articles.cgi'],
+        [quality   => 'admin.nav.quality',   'Content Check', 'quality.cgi'],
         [media     => 'admin.nav.media',     'Media',     'media.cgi'],
         [settings  => 'admin.nav.settings',  'Settings',  'settings.cgi'],
         [view      => 'admin.nav.view_site', 'View Site', '../public/index.cgi', ' target="_blank" rel="noopener"'],

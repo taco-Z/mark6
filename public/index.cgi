@@ -40,6 +40,7 @@ my $request_path = request_path();
 my $route = parse_route($request_path, \@supported_langs, $config);
 my $current_lang = current_lang($config, \@supported_langs, $route);
 my $order  = $in{order} || 'index';
+my $default_article_node_cache;
 
 if ($request_path eq 'robots.txt') {
     print encode('UTF-8', render_robots());
@@ -79,7 +80,8 @@ if ($route->{type} eq 'article') {
 }
 elsif ($route->{type} eq 'node') {
     my @articles = grep { Mark6::Article::node_for($_, $config) eq $route->{node} } load_articles();
-    $content = render_article_list(\@articles, undef);
+    @articles = filter_by_tag(\@articles, $in{tag}) if defined $in{tag} && $in{tag} ne '';
+    $content = render_article_list(\@articles, $in{tag}, node => $route->{node});
 }
 elsif ($order eq 'focus') {
     my $article = find_article($in{tar} || '');
@@ -100,7 +102,7 @@ elsif ($order eq 'article') {
     $content = render_article_list(\@articles, $in{tag});
 }
 else {
-    my @articles = load_articles();
+    my @articles = load_articles(limit => home_article_limit());
     $content = render_home($home, \@articles);
 }
 
@@ -230,6 +232,7 @@ sub url_decode {
 }
 
 sub load_articles {
+    my (%args) = @_;
     my $dir = "$ROOT/dat/articles";
     return () unless -d $dir;
 
@@ -237,12 +240,16 @@ sub load_articles {
     my @files = grep { /\.json\z/ } readdir $dh;
     closedir $dh;
 
+    my $limit = bounded_number($args{limit}, 0, 0, 100);
+    @files = sort article_file_sort @files if $limit;
+
     my @articles;
     for my $file (@files) {
         my $article = $store->read_json('dat', 'articles', $file);
         next unless $article && ($article->{status} || '') eq 'published';
         Mark6::Article::normalize($article, $config);
         push @articles, $article;
+        last if $limit && @articles >= $limit;
     }
 
     return sort { ($b->{id} || 0) <=> ($a->{id} || 0) } @articles;
@@ -281,9 +288,10 @@ sub filter_by_tag {
 
 sub render_home {
     my ($home, $articles) = @_;
-    my $title = escape_html($home->{title} || 'Home');
-    my $body = trusted_html($home->{body} || '');
-    my $article_list = $home->{show_articles} ? render_article_list($articles, undef, 5) : '';
+    my $localized = localized_home($home);
+    my $title = escape_html($localized->{title} || 'Home');
+    my $body = trusted_html($localized->{body} || '');
+    my $article_list = $home->{show_articles} ? render_article_list($articles, undef, home => 1) : '';
 
     return <<"HTML";
 <section class="home">
@@ -295,9 +303,22 @@ HTML
 }
 
 sub render_article_list {
-    my ($articles, $tag, $limit) = @_;
+    my ($articles, $tag, %args) = @_;
     my @items = @{$articles};
-    @items = @items[0 .. $limit - 1] if $limit && @items > $limit;
+    my $pagination = '';
+
+    unless ($args{home}) {
+        my $page = current_page();
+        my $per_page = article_page_limit();
+        my $total = scalar @items;
+        if ($per_page && $total > $per_page) {
+            my $last_page = int(($total + $per_page - 1) / $per_page);
+            $page = $last_page if $page > $last_page;
+            my $offset = ($page - 1) * $per_page;
+            @items = @items[$offset .. ($offset + $per_page - 1 > $#items ? $#items : $offset + $per_page - 1)];
+            $pagination = render_pagination($page, $last_page, $tag, $args{node});
+        }
+    }
 
     my $heading = defined $tag && $tag ne ''
         ? 'Tag: ' . escape_html($tag)
@@ -311,8 +332,22 @@ sub render_article_list {
 <section class="article-list">
   <h2>$heading</h2>
   $body
+  $pagination
 </section>
 HTML
+}
+
+sub localized_home {
+    my ($home) = @_;
+    my $default = $config->{site}{default_lang} || $config->{site}{language} || 'ja';
+    my $langs = ref($home->{langs}) eq 'HASH' ? $home->{langs} : {};
+    my $entry = ref($langs->{$current_lang}) eq 'HASH' ? $langs->{$current_lang} : {};
+    my $fallback = ref($langs->{$default}) eq 'HASH' ? $langs->{$default} : {};
+
+    return {
+        title => first_text($entry->{title}, $fallback->{title}, $home->{title}, 'Home'),
+        body  => first_text($entry->{body}, $fallback->{body}, $home->{body}, ''),
+    };
 }
 
 sub render_article_summary {
@@ -320,10 +355,11 @@ sub render_article_summary {
     my $title = escape_html(Mark6::Article::title_for($article, $current_lang, $config));
     my $date = escape_html(format_date($article->{created_at} || ''));
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
-    my $tags = render_tags($article->{tags} || []);
+    my $tags = render_tags($article->{tags} || [], $article);
     my $image = render_image($article, 'summary-image');
     my $image_class = $image ne '' ? ' has-image' : '';
     my $href = escape_attr(article_url($article, $current_lang));
+    my $taxonomy = render_article_taxonomy($article);
 
     return <<"HTML";
 <article class="article-summary$image_class">
@@ -331,11 +367,27 @@ sub render_article_summary {
   <div class="summary-main">
     <div class="meta">$date</div>
     <h3><a href="$href">$title</a></h3>
+    $taxonomy
     <div class="intro">$intro</div>
     $tags
   </div>
 </article>
 HTML
+}
+
+sub render_article_taxonomy {
+    my ($article) = @_;
+    my $meta = ref($article->{article}) eq 'HASH' ? $article->{article} : {};
+    my $location = ref($meta->{location}) eq 'HASH' ? $meta->{location} : {};
+    my @parts;
+
+    push @parts, $meta->{series} if defined $meta->{series} && $meta->{series} ne '';
+    push @parts, $location->{city} if defined $location->{city} && $location->{city} ne '';
+    push @parts, $meta->{type} if defined $meta->{type} && $meta->{type} ne '';
+
+    return '' unless @parts;
+    my $items = join '', map { '<span>' . escape_html($_) . '</span>' } @parts;
+    return qq|<div class="summary-taxonomy">$items</div>|;
 }
 
 sub render_article_detail {
@@ -344,33 +396,116 @@ sub render_article_detail {
     my $date = escape_html(format_date($article->{created_at} || ''));
     my $intro = trusted_html(Mark6::Article::description_for($article, $current_lang, $config));
     my $body = trusted_html(Mark6::Article::body_for($article, $current_lang, $config));
-    my $tags = render_tags($article->{tags} || []);
+    my $tags = render_tags($article->{tags} || [], $article);
     my $image = render_image($article, 'detail-image');
     my $lang_links = render_language_links($article);
+    my $kiosk = render_kiosk($article);
 
     $body = $intro if $body eq '';
 
     return <<"HTML";
 <article class="article-detail">
-  <a class="back-link" href="@{[escape_attr(article_list_url())]}">Articles</a>
+  <a class="back-link" href="@{[escape_attr(article_list_url('', Mark6::Article::node_for($article, $config)))]}">Articles</a>
   <div class="meta">$date</div>
   $lang_links
   <h1>$title</h1>
   $image
   <div class="body">$body</div>
+  $kiosk
   $tags
 </article>
 HTML
 }
 
+sub render_kiosk {
+    my ($article) = @_;
+    my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+    return '' unless truthy($kiosk->{enabled});
+    return '' unless ref($kiosk->{items}) eq 'ARRAY';
+
+    my @items;
+    for my $item (@{$kiosk->{items}}) {
+        next unless ref($item) eq 'HASH';
+        my $label = first_text($item->{label}, $item->{keyword});
+        my $keyword = first_text($item->{keyword}, $item->{label});
+        next if $label eq '' || $keyword eq '';
+        my $href = escape_attr(kiosk_search_url($keyword));
+        my $keyword_note = $label eq $keyword
+            ? ''
+            : '<span class="kiosk-keyword">' . escape_html(kiosk_keyword_label()) . ': ' . escape_html($keyword) . '</span>';
+        push @items, '<li><a class="kiosk-card" href="' . $href . '" target="_blank" rel="noopener sponsored">'
+            . '<span class="kiosk-label">' . escape_html($label) . '</span>'
+            . $keyword_note
+            . '<span class="kiosk-action">' . escape_html(kiosk_action_label()) . '</span>'
+            . '</a></li>';
+    }
+    return '' unless @items;
+
+    my $heading = escape_html(kiosk_heading());
+    return '<section class="kiosk"><h2>' . $heading . '</h2><ul class="kiosk-list">' . join('', @items) . '</ul></section>';
+}
+
+sub kiosk_heading {
+    return $current_lang eq 'ja' ? '売店' : 'Kiosk';
+}
+
+sub kiosk_keyword_label {
+    return $current_lang eq 'ja' ? '検索' : 'Search';
+}
+
+sub kiosk_action_label {
+    return $current_lang eq 'ja' ? 'Amazonで探す' : 'Search Amazon';
+}
+
+sub kiosk_search_url {
+    my ($keyword) = @_;
+    my $kiosk = ref($config->{kiosk}) eq 'HASH' ? $config->{kiosk} : {};
+    my $provider = $kiosk->{provider} || 'amazon';
+    my $encoded = url_encode($keyword);
+    my $template = $kiosk->{search_url} || default_kiosk_search_url($provider);
+    my $url = $template;
+    if ($url =~ /\{encoded_keyword\}/) {
+        $url =~ s/\{encoded_keyword\}/$encoded/g;
+    }
+    else {
+        $url .= ($url =~ /\?/ ? '&' : '?') . 'q=' . $encoded;
+    }
+
+    my $tag = clean_affiliate_tag($kiosk->{affiliate_tag} || $kiosk->{amazon_affiliate_tag} || '');
+    $url .= '&tag=' . url_encode($tag) if $provider eq 'amazon' && $tag ne '';
+    return $url;
+}
+
+sub default_kiosk_search_url {
+    my ($provider) = @_;
+    return 'https://www.amazon.co.jp/s?k={encoded_keyword}' if ($provider || '') eq 'amazon';
+    return 'https://www.amazon.co.jp/s?k={encoded_keyword}';
+}
+
+sub clean_affiliate_tag {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/[^0-9A-Za-z_-]//g;
+    return $value;
+}
+
+sub truthy {
+    my ($value) = @_;
+    return 0 unless defined $value;
+    return 1 if $value eq '1';
+    return 1 if "$value" =~ /\Atrue\z/i;
+    return 0;
+}
+
 sub render_tags {
-    my ($tags) = @_;
+    my ($tags, $article) = @_;
     return '' unless @{$tags};
+    my $node = $article ? Mark6::Article::node_for($article, $config) : '';
 
     my $links = join ' ', map {
         my $tag = escape_html($_);
         my $url = escape_attr(url_encode($_));
-        my $href = escape_attr(article_list_url("tag=$url"));
+        my $href = escape_attr(article_list_url("tag=$url", $node));
         qq|<a href="$href">$tag</a>|;
     } @{$tags};
 
@@ -384,7 +519,42 @@ sub render_image {
 
     my $src = escape_attr(image_src($image));
     my $alt = escape_attr(Mark6::Article::title_for($article, $current_lang, $config));
-    return qq|<img class="$class" src="$src" alt="$alt">|;
+    return qq|<img class="$class" src="$src" alt="$alt" loading="lazy" decoding="async">|;
+}
+
+sub home_article_limit {
+    my $display = ref($config->{display}) eq 'HASH' ? $config->{display} : {};
+    return bounded_number($display->{mini_articles}, 5, 1, 100);
+}
+
+sub article_page_limit {
+    my $display = ref($config->{display}) eq 'HASH' ? $config->{display} : {};
+    return bounded_number($display->{articles_per_page}, 20, 1, 100);
+}
+
+sub current_page {
+    return bounded_number($in{page}, 1, 1, 9999);
+}
+
+sub bounded_number {
+    my ($value, $default, $min, $max) = @_;
+    return $default unless defined $value && $value =~ /\A[0-9]+\z/;
+    return $min if $value < $min;
+    return $max if $value > $max;
+    return int($value);
+}
+
+sub article_file_sort {
+    my $aid = article_file_id($a);
+    my $bid = article_file_id($b);
+    return $bid <=> $aid || $b cmp $a if $aid ne '' && $bid ne '';
+    return $b cmp $a;
+}
+
+sub article_file_id {
+    my ($file) = @_;
+    return $1 if defined $file && $file =~ /\A([0-9]+)\.json\z/;
+    return '';
 }
 
 sub render_language_links {
@@ -505,9 +675,11 @@ sub log_access {
 
 sub article_meta_description {
     my ($article) = @_;
-    my $seo = (($article->{ai} || {})->{seo} || {});
+    my $ai = $article->{ai} || {};
+    my $seo = $ai->{seo} || {};
     my $seo_lang = $seo->{lang} || Mark6::Article::default_lang($article, $config);
     my $description = $seo_lang eq $current_lang ? ($seo->{seo_description} || '') : '';
+    $description = $ai->{seo_description} || '' if $description eq '';
     $description = Mark6::Article::description_for($article, $current_lang, $config) if $description eq '';
     $description = Mark6::Article::title_for($article, $current_lang, $config) if $description eq '';
     return plain_text($description);
@@ -523,7 +695,7 @@ sub render_page {
     my ($home_label, $articles_label) = public_nav_labels();
     $home_label = escape_html($home_label);
     $articles_label = escape_html($articles_label);
-    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=2');
+    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=3');
     my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
     my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
     my $lang_cookie = lang_cookie_header();
@@ -681,9 +853,59 @@ sub article_url {
 }
 
 sub article_list_url {
-    my ($query) = @_;
-    my $url = lang_url($current_lang);
+    my ($query, $node) = @_;
+    $node = default_article_node() unless safe_segment($node || '');
+    my $url = site_url("$current_lang/$node/");
     return defined $query && $query ne '' ? "$url?$query" : $url;
+}
+
+sub render_pagination {
+    my ($page, $last_page, $tag, $node) = @_;
+    return '' if $last_page <= 1;
+
+    my @links;
+    push @links, pagination_link('Prev', $page - 1, $tag, $node, $page <= 1);
+    for my $num (1 .. $last_page) {
+        if ($num == $page) {
+            push @links, '<span aria-current="page">' . escape_html($num) . '</span>';
+        }
+        else {
+            push @links, pagination_link($num, $num, $tag, $node, 0);
+        }
+    }
+    push @links, pagination_link('Next', $page + 1, $tag, $node, $page >= $last_page);
+
+    return '<nav class="pagination" aria-label="Pagination">' . join(' ', @links) . '</nav>';
+}
+
+sub pagination_link {
+    my ($label, $page, $tag, $node, $disabled) = @_;
+    return '<span class="disabled">' . escape_html($label) . '</span>' if $disabled;
+
+    my @query;
+    push @query, 'tag=' . url_encode($tag) if defined $tag && $tag ne '';
+    push @query, 'page=' . url_encode($page) if $page > 1;
+    my $href = escape_attr(article_list_url(join('&', @query), $node));
+    return '<a href="' . $href . '">' . escape_html($label) . '</a>';
+}
+
+sub default_article_node {
+    return $default_article_node_cache if defined $default_article_node_cache;
+
+    my $configured = value_at($config, 'site', 'node') || '';
+    return $default_article_node_cache = $configured if safe_segment($configured);
+    return $default_article_node_cache = $route->{node} if safe_segment($route->{node} || '');
+
+    my %seen;
+    for my $article (load_articles()) {
+        my $node = Mark6::Article::node_for($article, $config);
+        next unless safe_segment($node);
+        $seen{$node}++;
+    }
+
+    my @nodes = sort { $seen{$b} <=> $seen{$a} || $a cmp $b } keys %seen;
+    return $default_article_node_cache = $nodes[0] if @nodes;
+    return $default_article_node_cache = 'articles';
 }
 
 sub escape_html {
@@ -695,6 +917,13 @@ sub escape_html {
     $value =~ s/"/&quot;/g;
     $value =~ s/'/&#39;/g;
     return $value;
+}
+
+sub first_text {
+    for my $value (@_) {
+        return $value if defined $value && $value ne '';
+    }
+    return '';
 }
 
 sub escape_attr {
