@@ -73,6 +73,22 @@ sub body_for {
     return localized($article, $lang, $config)->{body};
 }
 
+sub tags_for_lang {
+    my ($article, $lang, $config) = @_;
+    $article = normalize($article, $config || {});
+    my $default = default_lang($article, $config || {});
+    my $tag_langs = ref($article->{tag_langs}) eq 'HASH' ? $article->{tag_langs} : {};
+    my $entry = $article->{langs}{$lang} || {};
+    my $fallback_entry = $article->{langs}{$default} || {};
+
+    return _list($tag_langs->{$lang}) if _has_list($tag_langs->{$lang});
+    return _list($entry->{tags}) if _has_list($entry->{tags});
+    return _list($tag_langs->{$default}) if _has_list($tag_langs->{$default});
+    return _list($fallback_entry->{tags}) if _has_list($fallback_entry->{tags});
+    return _list($article->{tags}) if _has_list($article->{tags});
+    return [];
+}
+
 sub translation_state {
     my ($article, $lang, $config) = @_;
     $article = normalize($article, $config || {});
@@ -125,6 +141,17 @@ sub _has_content {
     my ($entry) = @_;
     return 0 unless ref($entry) eq 'HASH';
     return grep { defined($entry->{$_}) && $entry->{$_} =~ /\S/ } qw(title description body);
+}
+
+sub _has_list {
+    my ($value) = @_;
+    return ref($value) eq 'ARRAY' && grep { defined($_) && $_ ne '' } @{$value};
+}
+
+sub _list {
+    my ($value) = @_;
+    return [] unless ref($value) eq 'ARRAY';
+    return [ grep { defined($_) && $_ ne '' } @{$value} ];
 }
 
 sub _safe_segment {

@@ -80,6 +80,25 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), {
     default_lang => 'ja',
     node => 'oita360',
     slug => 'beppu-station',
+    article => {
+        series => 'オオイタビ',
+        series_langs => {
+            ja => 'オオイタビ',
+            en => 'Oita Travel',
+        },
+        type => 'spot',
+        type_langs => {
+            ja => 'スポット',
+            en => 'Spot',
+        },
+        location => {
+            city => '別府市',
+            city_langs => {
+                ja => '別府市',
+                en => 'Beppu',
+            },
+        },
+    },
     langs => {
         ja => {
             title => '別府駅',
@@ -154,11 +173,39 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451806.json'), {
     created_at => '2013-08-02T13:56:44Z',
 });
 
+write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451807.json'), {
+    id => '1375451807',
+    type => 'article',
+    status => 'published',
+    default_lang => 'ja',
+    node => 'oita360',
+    slug => 'nested-tags',
+    langs => {
+        ja => {
+            title => '入れ子タグ',
+            description => '<p>日本語</p>',
+            body => '<p>日本語本文</p>',
+            tags => ['日本語タグ'],
+        },
+        en => {
+            title => 'Nested tags',
+            description => '<p>English</p>',
+            body => '<p>English body</p>',
+            tags => ['Nested EN', 'Travel Tips'],
+        },
+    },
+    tags => ['日本語タグ'],
+    image => '',
+    sort_order => 30,
+    created_at => '2013-08-02T13:56:43Z',
+});
+
 my $home = run_cgi('', '/ja/');
 like($home, qr/Content-Type: text\/html; charset=UTF-8/, 'prints UTF-8 content type');
 like($home, qr/ようこそ/, 'renders home title');
 like($home, qr/日本語ホーム/, 'renders localized Japanese home body');
 like($home, qr/別府駅/, 'renders default language article summary');
+like($home, qr/<div class="summary-taxonomy"><span>オオイタビ<\/span><span>別府市<\/span><span>スポット<\/span><\/div>/, 'renders Japanese localized article taxonomy');
 like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
 like($home, qr/class="language-switch"/, 'renders language switch links');
 like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=5"/, 'renders versioned asset URL from asset base');
@@ -198,6 +245,12 @@ like($en_detail, qr/<meta name="description" content="About Beppu Station">/, 'u
 unlike($en_detail, qr/Japanese SEO description/, 'does not use a different language SEO description');
 like($en_detail, qr/>Kiosk<\/h2>/, 'renders English kiosk heading');
 like($en_detail, qr/<span class="kiosk-action">Search Amazon<\/span>/, 'renders English kiosk action label');
+my $en_home = run_cgi('', '/en/');
+like($en_home, qr/<div class="summary-taxonomy"><span>Oita Travel<\/span><span>Beppu<\/span><span>Spot<\/span><\/div>/, 'renders English localized article taxonomy');
+my $nested_en_detail = run_cgi('', '/en/oita360/nested-tags/');
+like($nested_en_detail, qr/Nested tags/, 'renders nested-tag compatibility article');
+like($nested_en_detail, qr/>Nested EN<\/a>/, 'renders tags stored inside English language content');
+like($nested_en_detail, qr/href="\/test\/mark6\/en\/oita360\/\?tag=Nested%20EN"/, 'renders localized URL for nested English tag');
 my $request_uri_detail = run_cgi('', '', '/public/index.cgi/en/oita360/beppu-station/?x=1');
 like($request_uri_detail, qr/Beppu Station/, 'falls back to REQUEST_URI and strips public/index.cgi');
 
@@ -211,7 +264,6 @@ like($node_page_2, qr/Older Article/, 'node article list renders page 2');
 my $lang_top = run_cgi('', '/ja/');
 like($lang_top, qr/日本語ホーム/, 'renders language top');
 like($lang_top, qr/Set-Cookie: mark6_lang=ja; Path=\/test\/mark6\/; Max-Age=31536000; SameSite=Lax/, 'language page stores language cookie');
-my $en_home = run_cgi('', '/en/');
 like($en_home, qr/Welcome/, 'renders English home title');
 like($en_home, qr/English home/, 'renders English home body');
 

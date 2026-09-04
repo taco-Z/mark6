@@ -381,13 +381,35 @@ sub render_article_taxonomy {
     my $location = ref($meta->{location}) eq 'HASH' ? $meta->{location} : {};
     my @parts;
 
-    push @parts, $meta->{series} if defined $meta->{series} && $meta->{series} ne '';
-    push @parts, $location->{city} if defined $location->{city} && $location->{city} ne '';
-    push @parts, $meta->{type} if defined $meta->{type} && $meta->{type} ne '';
+    push @parts, localized_taxonomy_value($meta, 'series');
+    push @parts, localized_taxonomy_value($location, 'city');
+    push @parts, localized_taxonomy_value($meta, 'type');
+    @parts = grep { defined && $_ ne '' } @parts;
 
     return '' unless @parts;
     my $items = join '', map { '<span>' . escape_html($_) . '</span>' } @parts;
     return qq|<div class="summary-taxonomy">$items</div>|;
+}
+
+sub localized_taxonomy_value {
+    my ($source, $field) = @_;
+    return '' unless ref($source) eq 'HASH';
+
+    my $langs_key = $field . '_langs';
+    my $labels_key = $field . '_labels';
+    for my $container ($source->{$langs_key}, $source->{$labels_key}) {
+        next unless ref($container) eq 'HASH';
+        my $value = first_text($container->{$current_lang}, $container->{ja}, $container->{en});
+        return $value if $value ne '';
+    }
+
+    my $localized = $source->{$field};
+    if (ref($localized) eq 'HASH') {
+        my $value = first_text($localized->{$current_lang}, $localized->{ja}, $localized->{en});
+        return $value if $value ne '';
+    }
+
+    return first_text($source->{$field}, '');
 }
 
 sub render_article_detail {
@@ -514,10 +536,7 @@ sub render_tags {
 
 sub article_tags_for_lang {
     my ($article, $lang) = @_;
-    my $tag_langs = ref($article->{tag_langs}) eq 'HASH' ? $article->{tag_langs} : {};
-    return $tag_langs->{$lang} if ref($tag_langs->{$lang}) eq 'ARRAY' && @{$tag_langs->{$lang}};
-    return $article->{tags} if ref($article->{tags}) eq 'ARRAY';
-    return [];
+    return Mark6::Article::tags_for_lang($article, $lang, $config);
 }
 
 sub article_has_tag {

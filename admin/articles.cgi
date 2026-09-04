@@ -537,10 +537,7 @@ sub apply_ai_tags {
     die "No AI tag suggestions are available" unless ref($suggested) eq 'ARRAY' && @{$suggested};
 
     my $default_lang = Mark6::Article::default_lang($article, $config);
-    my $tag_langs = ref($article->{tag_langs}) eq 'HASH' ? $article->{tag_langs} : {};
-    my $current_lang_tags = ref($tag_langs->{$default_lang}) eq 'ARRAY' && @{$tag_langs->{$default_lang}}
-        ? $tag_langs->{$default_lang}
-        : ($article->{tags} || []);
+    my $current_lang_tags = Mark6::Article::tags_for_lang($article, $default_lang, $config);
     my @merged = merge_unique_tags($current_lang_tags, $suggested);
 
     $article->{tags} = \@merged;
@@ -703,7 +700,6 @@ sub language_fields {
     my $legend = h($lang->t('admin.article.content', 'Content'));
     my $default_lang = Mark6::Article::default_lang($article, $config);
     my $node = $article->{node} || $config->{site}{node} || 'oita360';
-    my $tag_langs = ref($article->{tag_langs}) eq 'HASH' ? $article->{tag_langs} : {};
     my $node_labels = node_labels($node);
     my @tab_controls;
     my @panels;
@@ -720,9 +716,7 @@ sub language_fields {
         my $description_label = h($lang->t('admin.article.field_description_html', 'Description HTML'));
         my $body_label = h($lang->t('admin.article.field_body_html', 'Body HTML'));
         my $section_value = h($node_labels->{$lang_code} || $node);
-        my $tags = ref($tag_langs->{$lang_code}) eq 'ARRAY' && @{$tag_langs->{$lang_code}}
-            ? $tag_langs->{$lang_code}
-            : ($lang_code eq $default_lang ? ($article->{tags} || []) : []);
+        my $tags = Mark6::Article::tags_for_lang($article, $lang_code, $config);
         my $tag_value = h(join(', ', @{$tags}));
         my $active = $lang_code eq $default_lang ? ' active' : '';
         my $hidden = $lang_code eq $default_lang ? '' : ' hidden';
@@ -1149,8 +1143,12 @@ sub collect_tag_langs {
         if (exists $params{"tags_$lang_code"}) {
             $tag_langs{$lang_code} = parse_tags($params{"tags_$lang_code"} || '');
         }
-        elsif (!exists $tag_langs{$lang_code} && $lang_code eq $default_lang) {
+        elsif ($lang_code eq $default_lang && exists $params{tags}) {
             $tag_langs{$lang_code} = parse_tags($params{tags} || '');
+        }
+        elsif (!exists $tag_langs{$lang_code}) {
+            my $existing_tags = Mark6::Article::tags_for_lang($existing, $lang_code, $config);
+            $tag_langs{$lang_code} = $existing_tags if @{$existing_tags};
         }
     }
 
@@ -1161,7 +1159,7 @@ sub common_tags {
     my ($existing, $default_lang) = @_;
     return parse_tags($params{tags}) if exists $params{tags};
     return parse_tags($params{"tags_$default_lang"} || '') if exists $params{"tags_$default_lang"};
-    return $existing->{tags} if ref($existing->{tags}) eq 'ARRAY';
+    return Mark6::Article::tags_for_lang($existing, $default_lang, $config);
     return [];
 }
 

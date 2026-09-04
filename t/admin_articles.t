@@ -71,6 +71,38 @@ like($new_form, qr/name="kiosk_keyword_1"/, 'form renders Kiosk keyword field');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'nested-tags.json'), {
+    id => 'nested-tags',
+    type => 'article',
+    status => 'published',
+    default_lang => 'ja',
+    node => 'oita360',
+    slug => 'nested-tags',
+    langs => {
+        ja => {
+            title => '入れ子タグ',
+            description => '<p>日本語</p>',
+            body => '<p>本文</p>',
+        },
+        en => {
+            title => 'Nested tags',
+            description => '<p>English</p>',
+            body => '<p>Body</p>',
+            tags => ['Nested EN', 'Travel'],
+        },
+    },
+    tags => ['日本語タグ'],
+    created_at => '2026-06-01T00:00:00Z',
+});
+
+my $nested_edit = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'GET',
+    query  => 'command=edit&id=nested-tags',
+    cookie => "mark6_session=$session_id",
+);
+like($nested_edit, qr/name="tags_en" type="text" value="Nested EN, Travel"/, 'form reads tags stored inside language content');
+
 my $save = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
     method => 'POST',
@@ -220,6 +252,8 @@ is($third_article->{sort_order}, 0, 'new article is placed before existing order
             title_en   => 'Test article',
             status     => 'published',
             tags       => 'News, Perl',
+            tags_ja    => 'ニュース, Perl',
+            tags_en    => 'News, Perl',
             image      => '',
             description_ja => $saved_article->{langs}{ja}{description},
             body_ja    => $saved_article->{langs}{ja}{body},
@@ -259,6 +293,8 @@ like($ai_article->{ai}{last_processed_at}, qr/\A\d{4}-\d{2}-\d{2}T/, 'AI timesta
             title_en   => 'Test article',
             status     => 'published',
             tags       => 'News, Perl',
+            tags_ja    => 'ニュース, Perl',
+            tags_en    => 'News, Perl',
             image      => '',
             description_ja => $saved_article->{langs}{ja}{description},
             body_ja    => $saved_article->{langs}{ja}{body},
@@ -297,6 +333,8 @@ is($batch_article->{ai}{seo}{seo_description}, 'AI batch SEO description', 'sele
             title_en   => 'Test article',
             status     => 'published',
             tags       => 'News, Perl',
+            tags_ja    => 'ニュース, Perl',
+            tags_en    => 'News, Perl',
             image      => '',
             description_ja => $saved_article->{langs}{ja}{description},
             body_ja    => $saved_article->{langs}{ja}{body},
@@ -327,6 +365,8 @@ my $apply_selected = run_cgi(
         title_en   => 'Test article',
         status     => 'published',
         tags       => 'News, Perl',
+        tags_ja    => 'ニュース, Perl',
+        tags_en    => 'News, Perl',
         image      => '',
         description_ja => $saved_article->{langs}{ja}{description},
         body_ja    => $saved_article->{langs}{ja}{body},
@@ -357,6 +397,8 @@ my $kiosk_apply = run_cgi(
         title_en   => 'Test article',
         status     => 'published',
         tags       => 'News, Perl',
+        tags_ja    => 'ニュース, Perl',
+        tags_en    => 'News, Perl',
         image      => '',
         description_ja => $saved_article->{langs}{ja}{description},
         body_ja    => $saved_article->{langs}{ja}{body},
@@ -391,6 +433,8 @@ my $tag_apply = run_cgi(
         title_en   => 'Test article',
         status     => 'published',
         tags       => 'News, Perl',
+        tags_ja    => 'ニュース, Perl',
+        tags_en    => 'News, Perl',
         image      => '',
         description_ja => $saved_article->{langs}{ja}{description},
         body_ja    => $saved_article->{langs}{ja}{body},
