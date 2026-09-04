@@ -70,6 +70,16 @@ write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
         },
     },
     show_articles => JSON::PP::true,
+    kiosk => {
+        enabled => JSON::PP::true,
+        mode => 'manual',
+        items => [
+            {
+                label => 'Home Guide',
+                keyword => 'Oita travel guide',
+            },
+        ],
+    },
     updated_at => '',
 });
 
@@ -204,6 +214,7 @@ my $home = run_cgi('', '/ja/');
 like($home, qr/Content-Type: text\/html; charset=UTF-8/, 'prints UTF-8 content type');
 like($home, qr/ようこそ/, 'renders home title');
 like($home, qr/日本語ホーム/, 'renders localized Japanese home body');
+like($home, qr/<span class="kiosk-label">Home Guide<\/span>/, 'renders manual home Kiosk item');
 like($home, qr/別府駅/, 'renders default language article summary');
 like($home, qr/<div class="summary-taxonomy"><span>オオイタビ<\/span><span>別府市<\/span><span>スポット<\/span><\/div>/, 'renders Japanese localized article taxonomy');
 like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
@@ -246,6 +257,7 @@ unlike($en_detail, qr/Japanese SEO description/, 'does not use a different langu
 like($en_detail, qr/>Kiosk<\/h2>/, 'renders English kiosk heading');
 like($en_detail, qr/<span class="kiosk-action">Search Amazon<\/span>/, 'renders English kiosk action label');
 my $en_home = run_cgi('', '/en/');
+like($en_home, qr/<span class="kiosk-action">Search Amazon<\/span>/, 'renders English home Kiosk action label');
 like($en_home, qr/<div class="summary-taxonomy"><span>Oita Travel<\/span><span>Beppu<\/span><span>Spot<\/span><\/div>/, 'renders English localized article taxonomy');
 my $nested_en_detail = run_cgi('', '/en/oita360/nested-tags/');
 like($nested_en_detail, qr/Nested tags/, 'renders nested-tag compatibility article');
@@ -266,6 +278,17 @@ like($lang_top, qr/日本語ホーム/, 'renders language top');
 like($lang_top, qr/Set-Cookie: mark6_lang=ja; Path=\/test\/mark6\/; Max-Age=31536000; SameSite=Lax/, 'language page stores language cookie');
 like($en_home, qr/Welcome/, 'renders English home title');
 like($en_home, qr/English home/, 'renders English home body');
+
+my $home_data = read_json(File::Spec->catfile($root, 'dat', 'home.json'));
+$home_data->{kiosk} = {
+    enabled => JSON::PP::true,
+    mode => 'auto',
+    items => [],
+};
+write_json(File::Spec->catfile($root, 'dat', 'home.json'), $home_data);
+my $auto_kiosk_home = run_cgi('', '/ja/');
+like($auto_kiosk_home, qr/<span class="kiosk-label">Guide Book<\/span>/, 'auto home Kiosk reuses article Kiosk items');
+like($auto_kiosk_home, qr/<span class="kiosk-label">Local Gift<\/span>/, 'auto home Kiosk renders another unique article Kiosk item');
 
 my $root_top = run_cgi('', '/', '', 'en-US,en;q=0.9');
 like($root_top, qr/Status: 302 Found/, 'root redirects to initial language');
@@ -334,4 +357,13 @@ sub write_json {
     open my $fh, '>:raw', $path or die "Cannot write $path: $!";
     print {$fh} JSON::PP->new->utf8->canonical->pretty->encode($data);
     close $fh;
+}
+
+sub read_json {
+    my ($path) = @_;
+    open my $fh, '<:encoding(UTF-8)', $path or die "Cannot read $path: $!";
+    local $/;
+    my $json = <$fh>;
+    close $fh;
+    return JSON::PP->new->utf8(0)->decode($json);
 }

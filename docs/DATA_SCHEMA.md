@@ -49,9 +49,21 @@ MARK6 stores all CMS data as UTF-8 JSON.
   "title": "Home",
   "body": "",
   "show_articles": true,
+  "kiosk": {
+    "enabled": true,
+    "mode": "manual",
+    "items": [
+      {
+        "label": "Search label",
+        "keyword": "search keyword"
+      }
+    ]
+  },
   "updated_at": ""
 }
 ```
+
+`home.kiosk` uses the same lightweight `label` and `keyword` item structure as article Kiosk. `mode: "manual"` displays the home-specific items stored in `home.kiosk.items`. `mode: "auto"` reuses up to five unique Kiosk items from published articles, so a site can switch from a curated home Kiosk to an article-driven home Kiosk without changing the public template.
 
 ## Article
 

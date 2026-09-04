@@ -291,6 +291,7 @@ sub render_home {
     my $title = escape_html($localized->{title} || 'Home');
     my $body = trusted_html($localized->{body} || '');
     my $article_list = $home->{show_articles} ? render_article_list($articles, undef, home => 1) : '';
+    my $kiosk = render_home_kiosk($home, $articles);
 
     return <<"HTML";
 <section class="home">
@@ -298,6 +299,7 @@ sub render_home {
   <div class="body">$body</div>
 </section>
 $article_list
+$kiosk
 HTML
 }
 
@@ -465,6 +467,47 @@ sub render_kiosk {
 
     my $heading = escape_html(kiosk_heading());
     return '<section class="kiosk"><h2>' . $heading . '</h2><ul class="kiosk-list">' . join('', @items) . '</ul></section>';
+}
+
+sub render_home_kiosk {
+    my ($home, $articles) = @_;
+    my $kiosk = ref($home->{kiosk}) eq 'HASH' ? $home->{kiosk} : {};
+    return '' unless truthy($kiosk->{enabled});
+
+    my $mode = ($kiosk->{mode} || 'manual') eq 'auto' ? 'auto' : 'manual';
+    if ($mode eq 'auto') {
+        my @items = auto_home_kiosk_items($articles);
+        return render_kiosk({ kiosk => { enabled => 1, items => \@items } });
+    }
+
+    return render_kiosk({ kiosk => $kiosk });
+}
+
+sub auto_home_kiosk_items {
+    my ($articles) = @_;
+    my @items;
+    my %seen;
+
+    for my $article (@{$articles || []}) {
+        my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+        next unless truthy($kiosk->{enabled});
+        next unless ref($kiosk->{items}) eq 'ARRAY';
+        for my $item (@{$kiosk->{items}}) {
+            next unless ref($item) eq 'HASH';
+            my $label = first_text($item->{label}, $item->{keyword});
+            my $keyword = first_text($item->{keyword}, $item->{label});
+            next if $label eq '' || $keyword eq '';
+            my $key = lc "$label\0$keyword";
+            next if $seen{$key}++;
+            push @items, {
+                label   => $label,
+                keyword => $keyword,
+            };
+            return @items if @items >= 5;
+        }
+    }
+
+    return @items;
 }
 
 sub kiosk_heading {

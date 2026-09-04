@@ -16,15 +16,25 @@ make_path(File::Spec->catdir($root, 'dat', 'sessions'));
 write_json(File::Spec->catfile($root, 'dat', 'users.json'), { version => 1, users => [] });
 write_json(File::Spec->catfile($root, 'dat', 'config.json'), {
     version => 1,
-    site => { title => 'MARK6 Test', language => 'ja', base_url => '' },
-    features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, shop => JSON::PP::false, ai => JSON::PP::false },
+    site => { title => 'MARK6 Test', language => 'ja', default_lang => 'ja', langs => ['ja', 'en'], base_url => '' },
+    features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, ai => JSON::PP::false },
     display => { articles_per_page => 20, mini_articles => 15 },
-    shop => { title => 'Shop', paypal_id => '' },
+    kiosk => { provider => 'amazon', affiliate_tag => '' },
 });
 write_json(File::Spec->catfile($root, 'dat', 'home.json'), {
     title => 'Before Home',
     body => '<p>Before body</p>',
     show_articles => JSON::PP::true,
+    kiosk => {
+        enabled => JSON::PP::true,
+        mode => 'manual',
+        items => [
+            {
+                label => 'Before Guide',
+                keyword => 'before guide',
+            },
+        ],
+    },
     updated_at => '',
 });
 
@@ -53,6 +63,12 @@ my $home_form = run_cgi(
 );
 like($home_form, qr/Before Home/, 'home editor renders current title');
 like($home_form, qr/Before body/, 'home editor renders current body');
+like($home_form, qr/name="title_ja"/, 'home editor renders Japanese title field');
+like($home_form, qr/name="title_en"/, 'home editor renders English title field');
+like($home_form, qr/name="home_kiosk_enabled"/, 'home editor renders Kiosk toggle');
+like($home_form, qr/name="home_kiosk_mode"/, 'home editor renders Kiosk mode');
+like($home_form, qr/name="home_kiosk_label_1"/, 'home editor renders Kiosk label field');
+like($home_form, qr/Before Guide/, 'home editor renders current Kiosk item');
 my ($csrf) = $home_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'home editor includes csrf token');
 
@@ -62,8 +78,14 @@ my $save = run_cgi(
     cookie => "mark6_session=$session_id",
     body => form_data(
         csrf_token => $csrf,
-        title => 'After Home',
-        body => '<p>After body</p>',
+        title_ja => 'After Home',
+        body_ja => '<p>After body</p>',
+        title_en => 'English Home',
+        body_en => '<p>English body</p>',
+        home_kiosk_enabled => 1,
+        home_kiosk_mode => 'manual',
+        home_kiosk_label_1 => 'Travel Guide',
+        home_kiosk_keyword_1 => 'Oita travel guide',
     ),
 );
 like($save, qr/Location: home\.cgi\?saved=1/, 'home save redirects');
@@ -71,7 +93,15 @@ like($save, qr/Location: home\.cgi\?saved=1/, 'home save redirects');
 my $home = read_json(File::Spec->catfile($root, 'dat', 'home.json'));
 is($home->{title}, 'After Home', 'home title saved');
 is($home->{body}, '<p>After body</p>', 'home body saved');
+is($home->{langs}{ja}{title}, 'After Home', 'Japanese home title saved');
+is($home->{langs}{ja}{body}, '<p>After body</p>', 'Japanese home body saved');
+is($home->{langs}{en}{title}, 'English Home', 'English home title saved');
+is($home->{langs}{en}{body}, '<p>English body</p>', 'English home body saved');
 ok(!$home->{show_articles}, 'unchecked show_articles saved false');
+ok($home->{kiosk}{enabled}, 'home Kiosk enabled flag saved');
+is($home->{kiosk}{mode}, 'manual', 'home Kiosk mode saved');
+is($home->{kiosk}{items}[0]{label}, 'Travel Guide', 'home Kiosk item label saved');
+is($home->{kiosk}{items}[0]{keyword}, 'Oita travel guide', 'home Kiosk item keyword saved');
 ok($home->{updated_at}, 'updated_at saved');
 
 my $public = run_cgi(
@@ -81,6 +111,16 @@ my $public = run_cgi(
 );
 like($public, qr/After Home/, 'public page shows updated home title');
 like($public, qr/After body/, 'public page shows updated home body');
+like($public, qr/<section class="kiosk">/, 'public page shows home Kiosk');
+like($public, qr/Travel Guide/, 'public page shows home Kiosk item');
+
+my $public_en = run_cgi(
+    script => File::Spec->catfile('public', 'index.cgi'),
+    method => 'GET',
+    path_info => '/en/',
+);
+like($public_en, qr/English Home/, 'public page shows English home title');
+like($public_en, qr/English body/, 'public page shows English home body');
 
 remove_tree($root);
 done_testing;
