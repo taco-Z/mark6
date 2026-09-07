@@ -27,6 +27,7 @@ use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::DataStore;
 use Mark6::Article;
+use Mark6::Kiosk qw(config_for_lang item_type);
 use Mark6::Lang;
 use Mark6::Root;
 
@@ -92,6 +93,40 @@ sub render_home_editor {
     $kiosk_fields
     <button type="submit">$save_label</button>
   </form>
+  <script>
+  (() => {
+    for (const editor of document.querySelectorAll('.kiosk-editor')) {
+      const tabs = Array.from(editor.querySelectorAll('[data-lang-tab]'));
+      const panels = Array.from(editor.querySelectorAll('.lang-panel'));
+      for (const tab of tabs) tab.addEventListener('click', () => {
+        for (const item of tabs) item.classList.toggle('active', item === tab);
+        for (const panel of panels) {
+          const active = panel.id === tab.dataset.langTab;
+          panel.hidden = !active;
+          panel.classList.toggle('active', active);
+        }
+      });
+      const updateRow = (row) => {
+        const type = row.querySelector('[data-kiosk-type]')?.value || 'amazon';
+        row.querySelector('[data-kiosk-amazon]').hidden = type !== 'amazon';
+        row.querySelector('[data-kiosk-url]').hidden = type !== 'url';
+      };
+      for (const row of editor.querySelectorAll('[data-kiosk-row]')) {
+        updateRow(row);
+        row.querySelector('[data-kiosk-type]').addEventListener('change', () => updateRow(row));
+      }
+      for (const button of editor.querySelectorAll('[data-kiosk-add]')) button.addEventListener('click', () => {
+        const panel = button.closest('.lang-panel');
+        const row = Array.from(panel.querySelectorAll('[data-kiosk-row]')).find((item) => item.hidden);
+        if (row) {
+          row.hidden = false;
+          updateRow(row);
+        }
+        if (!Array.from(panel.querySelectorAll('[data-kiosk-row]')).some((item) => item.hidden)) button.hidden = true;
+      });
+    }
+  })();
+  </script>
 </section>
 HTML
 }
@@ -166,12 +201,6 @@ sub collect_home_langs {
 
 sub home_kiosk_fields {
     my ($home) = @_;
-    my $kiosk = ref($home->{kiosk}) eq 'HASH' ? $home->{kiosk} : {};
-    my @items = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
-    my $checked = $kiosk->{enabled} ? 'checked' : '';
-    my $mode = ($kiosk->{mode} || 'manual') eq 'auto' ? 'auto' : 'manual';
-    my $manual_selected = $mode eq 'manual' ? 'selected' : '';
-    my $auto_selected = $mode eq 'auto' ? 'selected' : '';
     my $legend = h($lang->t('admin.home.kiosk', 'Home Kiosk'));
     my $enabled_label = h($lang->t('admin.home.kiosk_enabled', 'Show Kiosk on home'));
     my $mode_label = h($lang->t('admin.home.kiosk_mode', 'Kiosk source'));
@@ -179,67 +208,113 @@ sub home_kiosk_fields {
     my $auto_label = h($lang->t('admin.home.kiosk_mode_auto', 'Pick from article Kiosks'));
     my $label_text = h($lang->t('admin.article.kiosk_label', 'Label'));
     my $keyword_text = h($lang->t('admin.article.kiosk_keyword', 'Search keyword'));
+    my $type_text = h($lang->t('admin.article.kiosk_type', 'Type'));
+    my $amazon_text = h($lang->t('admin.article.kiosk_type_amazon', 'Amazon'));
+    my $url_text = h($lang->t('admin.article.kiosk_type_url', 'URL'));
+    my $url_label = h($lang->t('admin.article.kiosk_url', 'URL'));
+    my $add_label = h($lang->t('admin.article.kiosk_add', 'Add item'));
     my $help = h($lang->t('admin.home.kiosk_help', 'Manual items are shown on home. Auto mode reuses public article Kiosk items.'));
-    my @rows;
+    my $default_lang = $config->{site}{default_lang} || $config->{site}{language} || $home_langs[0] || 'ja';
+    my (@tabs, @panels);
 
-    for my $index (0 .. 4) {
-        my $item = ref($items[$index]) eq 'HASH' ? $items[$index] : {};
-        my $number = $index + 1;
-        my $label = h($item->{label} || '');
-        my $keyword = h($item->{keyword} || '');
-        push @rows, <<"HTML";
-      <div class="kiosk-admin-row">
-        <label>$label_text $number<br><input name="home_kiosk_label_$number" type="text" value="$label"></label>
-        <label>$keyword_text $number<br><input name="home_kiosk_keyword_$number" type="text" value="$keyword"></label>
-      </div>
+    for my $lang_code (@home_langs) {
+        my $kiosk = config_for_lang($home->{kiosk}, $lang_code);
+        my @items = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
+        my $checked = $kiosk->{enabled} ? 'checked' : '';
+        my $mode = ($kiosk->{mode} || 'manual') eq 'auto' ? 'auto' : 'manual';
+        my $manual_selected = $mode eq 'manual' ? 'selected' : '';
+        my $auto_selected = $mode eq 'auto' ? 'selected' : '';
+        my $active = $lang_code eq $default_lang ? ' active' : '';
+        my $hidden = $lang_code eq $default_lang ? '' : ' hidden';
+        my $panel_id = "home-kiosk-panel-$lang_code";
+        push @tabs, qq|      <button class="lang-tab$active" type="button" data-lang-tab="$panel_id">@{[uc $lang_code]}</button>|;
+        my @rows;
+
+        for my $index (0 .. 4) {
+            my $item = ref($items[$index]) eq 'HASH' ? $items[$index] : {};
+            my $number = $index + 1;
+            my $label = h($item->{label} || '');
+            my $keyword = h($item->{keyword} || '');
+            my $url = h($item->{url} || '');
+            my $type = item_type($item) || ($lang_code eq 'ja' ? 'amazon' : 'url');
+            my $amazon_selected = $type eq 'amazon' ? 'selected' : '';
+            my $url_selected = $type eq 'url' ? 'selected' : '';
+            my $row_hidden = $index >= @items && $index > 0 ? ' hidden' : '';
+            push @rows, <<"HTML";
+        <div class="kiosk-admin-row" data-kiosk-row$row_hidden>
+          <label>$label_text $number<br><input name="home_kiosk_label_${lang_code}_$number" type="text" value="$label"></label>
+          <label>$type_text<br><select name="home_kiosk_type_${lang_code}_$number" data-kiosk-type><option value="amazon" $amazon_selected>$amazon_text</option><option value="url" $url_selected>$url_text</option></select></label>
+          <label data-kiosk-amazon>$keyword_text<br><input name="home_kiosk_keyword_${lang_code}_$number" type="text" value="$keyword"></label>
+          <label data-kiosk-url>$url_label<br><input name="home_kiosk_url_${lang_code}_$number" type="url" value="$url" placeholder="https://example.com/"></label>
+        </div>
+HTML
+        }
+
+        push @panels, <<"HTML";
+      <section id="$panel_id" class="lang-panel$active"$hidden>
+        <label><input name="home_kiosk_enabled_$lang_code" type="checkbox" value="1" $checked> $enabled_label</label>
+        <label>$mode_label<br><select name="home_kiosk_mode_$lang_code"><option value="manual" $manual_selected>$manual_label</option><option value="auto" $auto_selected>$auto_label</option></select></label>
+        <div class="kiosk-admin-grid" data-kiosk-rows>
+@{[join '', @rows]}        </div>
+        <button class="button secondary compact" type="button" data-kiosk-add>$add_label</button>
+      </section>
 HTML
     }
 
     return <<"HTML";
-    <fieldset>
+    <fieldset class="kiosk-editor">
       <legend>$legend</legend>
-      <label><input name="home_kiosk_enabled" type="checkbox" value="1" $checked> $enabled_label</label>
-      <label>$mode_label<br>
-        <select name="home_kiosk_mode">
-          <option value="manual" $manual_selected>$manual_label</option>
-          <option value="auto" $auto_selected>$auto_label</option>
-        </select>
-      </label>
       <p class="meta">$help</p>
-      <div class="kiosk-admin-grid">
-@{[join '', @rows]}      </div>
+      <div class="lang-tabs" role="tablist">@{[join "\n", @tabs]}</div>
+@{[join "\n", @panels]}
     </fieldset>
 HTML
 }
 
 sub collect_home_kiosk {
     my ($home) = @_;
-    my $existing = ref($home->{kiosk}) eq 'HASH' ? $home->{kiosk} : {};
-    my $has_params = exists $params{home_kiosk_enabled} || exists $params{home_kiosk_mode};
-    for my $number (1 .. 5) {
-        $has_params ||= exists $params{"home_kiosk_label_$number"} || exists $params{"home_kiosk_keyword_$number"};
+    my $existing = localized_kiosk_container($home->{kiosk});
+    my $has_params = 0;
+    for my $lang_code (@home_langs) {
+        $has_params ||= exists $params{"home_kiosk_enabled_$lang_code"} || exists $params{"home_kiosk_mode_$lang_code"};
+        for my $number (1 .. 5) {
+            $has_params ||= exists $params{"home_kiosk_label_${lang_code}_$number"}
+                || exists $params{"home_kiosk_keyword_${lang_code}_$number"}
+                || exists $params{"home_kiosk_url_${lang_code}_$number"};
+        }
     }
     return $existing if !$has_params && ref($home->{kiosk}) eq 'HASH';
 
-    my @items;
-    for my $number (1 .. 5) {
-        my $label = clean_text($params{"home_kiosk_label_$number"} || '');
-        my $keyword = clean_text($params{"home_kiosk_keyword_$number"} || '');
-        next if $label eq '' && $keyword eq '';
-        $label = $keyword if $label eq '';
-        $keyword = $label if $keyword eq '';
-        push @items, {
-            label   => $label,
-            keyword => $keyword,
+    for my $lang_code (@home_langs) {
+        my @items;
+        for my $number (1 .. 5) {
+            my $label = clean_text($params{"home_kiosk_label_${lang_code}_$number"} || '');
+            my $type = ($params{"home_kiosk_type_${lang_code}_$number"} || '') eq 'url' ? 'url' : 'amazon';
+            my $keyword = clean_text($params{"home_kiosk_keyword_${lang_code}_$number"} || '');
+            my $url = clean_text($params{"home_kiosk_url_${lang_code}_$number"} || '');
+            next if $label eq '' && $keyword eq '' && $url eq '';
+            push @items, $type eq 'url'
+                ? { label => $label ne '' ? $label : $url, type => 'url', url => $url }
+                : { label => $label ne '' ? $label : $keyword, type => 'amazon', keyword => $keyword ne '' ? $keyword : $label };
+        }
+        my $mode = ($params{"home_kiosk_mode_$lang_code"} || 'manual') eq 'auto' ? 'auto' : 'manual';
+        $existing->{$lang_code} = {
+            enabled => ($params{"home_kiosk_enabled_$lang_code"} || '') eq '1' ? JSON::PP::true : JSON::PP::false,
+            mode => $mode,
+            items => \@items,
         };
     }
 
-    my $mode = ($params{home_kiosk_mode} || $existing->{mode} || 'manual') eq 'auto' ? 'auto' : 'manual';
-    return {
-        enabled => ($params{home_kiosk_enabled} || '') eq '1' ? JSON::PP::true : JSON::PP::false,
-        mode    => $mode,
-        items   => \@items,
-    };
+    return $existing;
+}
+
+sub localized_kiosk_container {
+    my ($kiosk) = @_;
+    return {} unless ref($kiosk) eq 'HASH';
+    if (exists $kiosk->{enabled} || exists $kiosk->{items} || exists $kiosk->{mode}) {
+        return { ja => { %{$kiosk} } };
+    }
+    return { %{$kiosk} };
 }
 
 sub clean_text {

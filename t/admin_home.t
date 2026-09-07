@@ -65,10 +65,12 @@ like($home_form, qr/Before Home/, 'home editor renders current title');
 like($home_form, qr/Before body/, 'home editor renders current body');
 like($home_form, qr/name="title_ja"/, 'home editor renders Japanese title field');
 like($home_form, qr/name="title_en"/, 'home editor renders English title field');
-like($home_form, qr/name="home_kiosk_enabled"/, 'home editor renders Kiosk toggle');
-like($home_form, qr/name="home_kiosk_mode"/, 'home editor renders Kiosk mode');
-like($home_form, qr/name="home_kiosk_label_1"/, 'home editor renders Kiosk label field');
+like($home_form, qr/name="home_kiosk_enabled_ja"/, 'home editor renders Japanese Kiosk toggle');
+like($home_form, qr/name="home_kiosk_enabled_en"/, 'home editor renders English Kiosk toggle');
+like($home_form, qr/name="home_kiosk_mode_ja"/, 'home editor renders localized Kiosk mode');
+like($home_form, qr/name="home_kiosk_label_ja_1"/, 'home editor renders localized Kiosk label field');
 like($home_form, qr/Before Guide/, 'home editor renders current Kiosk item');
+unlike($home_form, qr/name="home_kiosk_label_en_1" type="text" value="Before Guide"/, 'legacy home Kiosk does not fall back to English');
 my ($csrf) = $home_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'home editor includes csrf token');
 
@@ -82,10 +84,16 @@ my $save = run_cgi(
         body_ja => '<p>After body</p>',
         title_en => 'English Home',
         body_en => '<p>English body</p>',
-        home_kiosk_enabled => 1,
-        home_kiosk_mode => 'manual',
-        home_kiosk_label_1 => 'Travel Guide',
-        home_kiosk_keyword_1 => 'Oita travel guide',
+        home_kiosk_enabled_ja => 1,
+        home_kiosk_mode_ja => 'manual',
+        home_kiosk_label_ja_1 => 'Travel Guide',
+        home_kiosk_type_ja_1 => 'amazon',
+        home_kiosk_keyword_ja_1 => 'Oita travel guide',
+        home_kiosk_enabled_en => 1,
+        home_kiosk_mode_en => 'manual',
+        home_kiosk_label_en_1 => 'Plan an Oita trip',
+        home_kiosk_type_en_1 => 'url',
+        home_kiosk_url_en_1 => 'https://example.com/oita',
     ),
 );
 like($save, qr/Location: home\.cgi\?saved=1/, 'home save redirects');
@@ -98,10 +106,13 @@ is($home->{langs}{ja}{body}, '<p>After body</p>', 'Japanese home body saved');
 is($home->{langs}{en}{title}, 'English Home', 'English home title saved');
 is($home->{langs}{en}{body}, '<p>English body</p>', 'English home body saved');
 ok(!$home->{show_articles}, 'unchecked show_articles saved false');
-ok($home->{kiosk}{enabled}, 'home Kiosk enabled flag saved');
-is($home->{kiosk}{mode}, 'manual', 'home Kiosk mode saved');
-is($home->{kiosk}{items}[0]{label}, 'Travel Guide', 'home Kiosk item label saved');
-is($home->{kiosk}{items}[0]{keyword}, 'Oita travel guide', 'home Kiosk item keyword saved');
+ok($home->{kiosk}{ja}{enabled}, 'Japanese home Kiosk enabled flag saved');
+is($home->{kiosk}{ja}{mode}, 'manual', 'Japanese home Kiosk mode saved');
+is($home->{kiosk}{ja}{items}[0]{label}, 'Travel Guide', 'Japanese home Kiosk item label saved');
+is($home->{kiosk}{ja}{items}[0]{keyword}, 'Oita travel guide', 'Japanese home Kiosk item keyword saved');
+ok($home->{kiosk}{en}{enabled}, 'English home Kiosk enabled flag saved');
+is($home->{kiosk}{en}{items}[0]{type}, 'url', 'English home Kiosk URL type saved');
+is($home->{kiosk}{en}{items}[0]{url}, 'https://example.com/oita', 'English home Kiosk URL saved');
 ok($home->{updated_at}, 'updated_at saved');
 
 my $public = run_cgi(
@@ -121,6 +132,8 @@ my $public_en = run_cgi(
 );
 like($public_en, qr/English Home/, 'public page shows English home title');
 like($public_en, qr/English body/, 'public page shows English home body');
+like($public_en, qr/Plan an Oita trip/, 'public English home shows its localized Kiosk item');
+unlike($public_en, qr/Travel Guide/, 'public English home does not use Japanese Kiosk');
 
 remove_tree($root);
 done_testing;
