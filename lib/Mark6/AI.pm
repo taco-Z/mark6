@@ -158,14 +158,17 @@ sub diagnose_seo {
 sub suggest_kiosk {
     my ($self, %args) = @_;
     my $lang = $args{lang} || ($args{article} || {})->{default_lang} || 'ja';
+    my $usage = $lang eq 'ja'
+        ? 'Suggest Amazon search labels and keywords for relevant guides, local products, gifts, or related items.'
+        : 'Suggest service-link labels for accommodation, tours, transportation, car rental, travel guides, shopping, or related services. Put a short search intent in keyword, but never invent or return a URL.';
     my $result = $self->_request_json(
         system => join("\n",
             'You suggest lightweight Kiosk search links for a generic CMS article.',
             "Write labels and reasons in language code: $lang.",
-            'Return only one JSON object with kiosk_items.',
-            'kiosk_items must be an array of 2 to 5 objects.',
+            'Return only one JSON object with items.',
+            'items must be an array of 2 to 5 objects.',
             'Each object must have label, keyword, and reason.',
-            'Suggest broad, useful search keywords that fit the article.',
+            $usage,
             'Do not suggest prices, stock, specific paid placements, or products not grounded in the supplied article.',
         ),
         prompt => article_prompt($args{article} || {}),
@@ -359,7 +362,8 @@ sub _normalize_seo_result {
 
 sub _normalize_kiosk_result {
     my ($result, $provider, $model) = @_;
-    my @items = ref($result->{kiosk_items}) eq 'ARRAY' ? @{$result->{kiosk_items}} : ();
+    my $source = ref($result->{items}) eq 'ARRAY' ? $result->{items} : $result->{kiosk_items};
+    my @items = ref($source) eq 'ARRAY' ? @{$source} : ();
     my @cleaned;
 
     for my $item (@items) {
@@ -377,7 +381,7 @@ sub _normalize_kiosk_result {
     @cleaned = @cleaned[0 .. 4] if @cleaned > 5;
 
     return {
-        kiosk_items       => \@cleaned,
+        items             => \@cleaned,
         provider          => $provider,
         model             => $model,
         last_processed_at => _iso_now(),

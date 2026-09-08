@@ -14,7 +14,7 @@ MARK6 updates MARK5 while keeping the core spirit:
 
 MARK5 has four main CGI entry points:
 
-- `index.cgi`: public site, article list/detail, tags, shop/cart, access log write.
+- `index.cgi`: public site, article list/detail, tags, legacy shop/cart, access log write.
 - `operation.cgi`: login, logout, first setup.
 - `os.cgi`: admin dashboard, article/product editing, layout/CSS/meta/settings/user/log editing.
 - `uploader.cgi`: file upload/list/delete.
@@ -33,7 +33,9 @@ MARK5 stores most data in `dat/*.cgi` with `==` field separators and escape toke
 - Admin dashboard.
 - User ranks: `master`, `staff`, `writer`.
 - File/image upload workflow.
-- Optional shop/cart concept, but keep it isolated so normal CMS use stays tiny.
+- Lightweight post-article Kiosk links for optional affiliate/search flows, without a product database.
+- Lightweight fixed pages plus flat header/footer navigation.
+- Three administrator-controlled free-space slots without arbitrary layout placement.
 - PC/smart responsive output concept.
 - Backup by copying directories.
 
@@ -90,7 +92,8 @@ mark6/
 5. Implement MARK5 migration script.
 6. Rebuild uploader.
 7. Port layout/settings screens.
-8. Decide whether shop/cart belongs in MARK6 core or an optional module.
+8. Keep legacy shop/cart data import isolated; use Kiosk for lightweight post-article search links.
+9. Reuse article JSON/editor for fixed pages with `type: page` and keep them out of article listings.
 
 ## Compatibility Notes
 
@@ -102,4 +105,3 @@ MARK6 should initially keep compatible public aliases so migrated sites do not b
 - `order=focus&tar=<id>`
 
 Internally, MARK6 can route these to cleaner handlers.
-

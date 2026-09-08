@@ -60,14 +60,17 @@ like($new_form, qr/name="ai_run_translate" type="checkbox" value="1"/, 'form ren
 like($new_form, qr/name="ai_run_rewrite" type="checkbox" value="1"/, 'form renders AI rewrite toggle');
 like($new_form, qr/name="ai_run_seo" type="checkbox" value="1"/, 'form renders AI SEO diagnosis toggle');
 like($new_form, qr/name="ai_run_kiosk" type="checkbox" value="1"/, 'form renders AI Kiosk suggestion toggle');
+like($new_form, qr/name="ai_kiosk_lang"/, 'form renders AI Kiosk target language selector');
 like($new_form, qr/name="command" value="ai_run_selected"/, 'form renders selected AI action submit');
 like($new_form, qr/id="ai-assist"/, 'form provides an AI action return anchor');
 like($new_form, qr/id="article-editor"/, 'form provides an article editor return anchor');
 like($new_form, qr/name="tags_ja"/, 'form renders Japanese tags field');
 like($new_form, qr/name="tags_en"/, 'form renders English tags field');
-like($new_form, qr/name="kiosk_enabled"/, 'form renders Kiosk toggle');
-like($new_form, qr/name="kiosk_label_1"/, 'form renders Kiosk label field');
-like($new_form, qr/name="kiosk_keyword_1"/, 'form renders Kiosk keyword field');
+like($new_form, qr/name="kiosk_enabled_ja"/, 'form renders Japanese Kiosk toggle');
+like($new_form, qr/name="kiosk_enabled_en"/, 'form renders English Kiosk toggle');
+like($new_form, qr/name="kiosk_label_ja_1"/, 'form renders localized Kiosk label field');
+like($new_form, qr/name="kiosk_type_en_1"/, 'form renders localized Kiosk type field');
+like($new_form, qr/name="kiosk_url_en_1"/, 'form renders English Kiosk URL field');
 my ($csrf) = $new_form =~ /name="csrf_token" value="([0-9a-f]+)"/;
 ok($csrf, 'form includes csrf token');
 
@@ -92,6 +95,10 @@ write_json(File::Spec->catfile($root, 'dat', 'articles', 'nested-tags.json'), {
         },
     },
     tags => ['日本語タグ'],
+    kiosk => {
+        enabled => JSON::PP::true,
+        items => [{ label => 'Legacy Guide', keyword => 'legacy guide' }],
+    },
     created_at => '2026-06-01T00:00:00Z',
 });
 
@@ -102,6 +109,8 @@ my $nested_edit = run_cgi(
     cookie => "mark6_session=$session_id",
 );
 like($nested_edit, qr/name="tags_en" type="text" value="Nested EN, Travel"/, 'form reads tags stored inside language content');
+like($nested_edit, qr/name="kiosk_label_ja_1" type="text" value="Legacy Guide"/, 'form reads legacy flat Kiosk as Japanese');
+unlike($nested_edit, qr/name="kiosk_label_en_1" type="text" value="Legacy Guide"/, 'legacy flat Kiosk does not fall back to English');
 
 my $save = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -126,9 +135,14 @@ my $save = run_cgi(
         body_ja    => '<p>本文</p>',
         description_en => '<p>Summary</p>',
         body_en    => '<p>Body</p>',
-        kiosk_enabled => 1,
-        kiosk_label_1 => 'Guide Book',
-        kiosk_keyword_1 => 'travel guide',
+        kiosk_enabled_ja => 1,
+        kiosk_label_ja_1 => 'Guide Book',
+        kiosk_type_ja_1 => 'amazon',
+        kiosk_keyword_ja_1 => 'travel guide',
+        kiosk_enabled_en => 1,
+        kiosk_label_en_1 => 'Hotels near Beppu',
+        kiosk_type_en_1 => 'url',
+        kiosk_url_en_1 => 'https://example.com/beppu-hotels',
     ),
 );
 like($save, qr/Location: articles\.cgi/, 'save redirects to article list');
@@ -157,9 +171,13 @@ is($saved_article->{title}, 'テスト記事', 'legacy title mirrors default lan
 is($saved_article->{sort_order}, 10, 'new article is assigned first sort order');
 is_deeply($saved_article->{tag_langs}{ja}, ['ニュース', 'Perl'], 'Japanese localized tags saved');
 is_deeply($saved_article->{tag_langs}{en}, ['News', 'Perl'], 'English localized tags saved');
-ok($saved_article->{kiosk}{enabled}, 'Kiosk enabled flag saved');
-is($saved_article->{kiosk}{items}[0]{label}, 'Guide Book', 'Kiosk item label saved');
-is($saved_article->{kiosk}{items}[0]{keyword}, 'travel guide', 'Kiosk item keyword saved');
+ok($saved_article->{kiosk}{ja}{enabled}, 'Japanese Kiosk enabled flag saved');
+is($saved_article->{kiosk}{ja}{items}[0]{label}, 'Guide Book', 'Japanese Kiosk item label saved');
+is($saved_article->{kiosk}{ja}{items}[0]{type}, 'amazon', 'Japanese Kiosk item type saved');
+is($saved_article->{kiosk}{ja}{items}[0]{keyword}, 'travel guide', 'Japanese Kiosk keyword saved');
+ok($saved_article->{kiosk}{en}{enabled}, 'English Kiosk enabled flag saved');
+is($saved_article->{kiosk}{en}{items}[0]{type}, 'url', 'English Kiosk URL type saved');
+is($saved_article->{kiosk}{en}{items}[0]{url}, 'https://example.com/beppu-hotels', 'English Kiosk URL saved unchanged');
 
 my $second_save = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -341,14 +359,16 @@ is($batch_article->{ai}{seo}{seo_description}, 'AI batch SEO description', 'sele
             description_en => '<p>Summary</p>',
             body_en    => '<p>Body</p>',
             ai_run_kiosk => 1,
+            ai_kiosk_lang => 'ja',
         ),
     );
-    like($kiosk_ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=selected_done\#ai-assist/, 'selected AI Kiosk action returns to the AI action panel');
+    like($kiosk_ai, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=selected_done&ai_kiosk_lang=ja\#ai-assist/, 'selected AI Kiosk action returns to the AI action panel');
 }
 
 my $kiosk_ai_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
-is($kiosk_ai_article->{ai}{kiosk}{kiosk_items}[0]{label}, 'Travel Guide', 'AI Kiosk suggestion label saved');
-is($kiosk_ai_article->{ai}{kiosk}{kiosk_items}[0]{keyword}, 'Beppu travel guide', 'AI Kiosk suggestion keyword saved');
+is($kiosk_ai_article->{ai}{kiosks}{ja}{items}[0]{label}, 'Travel Guide', 'Japanese AI Kiosk suggestion label saved by language');
+is($kiosk_ai_article->{ai}{kiosks}{ja}{items}[0]{keyword}, 'Beppu travel guide', 'Japanese AI Kiosk suggestion keyword saved by language');
+ok(!exists $kiosk_ai_article->{ai}{kiosks}{ja}{kiosk_items}, 'new AI Kiosk results use items instead of kiosk_items');
 
 my $apply_selected = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -409,9 +429,72 @@ my $kiosk_apply = run_cgi(
 );
 like($kiosk_apply, qr/Location: articles\.cgi\?command=edit&id=test-article&ai=kiosk_applied\#article-editor/, 'AI Kiosk apply returns to the article editor');
 my $kiosk_applied_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
-is($kiosk_applied_article->{kiosk}{items}[0]{label}, 'Guide Book', 'AI Kiosk apply preserves existing Kiosk item');
-is($kiosk_applied_article->{kiosk}{items}[1]{label}, 'Travel Guide', 'AI Kiosk apply adds suggested item');
-is($kiosk_applied_article->{kiosk}{items}[1]{keyword}, 'Beppu travel guide', 'AI Kiosk apply adds suggested keyword');
+is($kiosk_applied_article->{kiosk}{ja}{items}[0]{label}, 'Guide Book', 'AI Kiosk apply preserves existing localized item');
+is($kiosk_applied_article->{kiosk}{ja}{items}[1]{label}, 'Travel Guide', 'AI Kiosk apply adds suggested item to its language');
+is($kiosk_applied_article->{kiosk}{ja}{items}[1]{keyword}, 'Beppu travel guide', 'AI Kiosk apply adds suggested keyword');
+
+{
+    local $ENV{MARK6_AI_MOCK_RESPONSE} = JSON::PP->new->utf8->encode({
+        kiosk_items => [
+            { label => 'Book a Beppu tour', keyword => 'Beppu guided tours', reason => 'Useful after reading the article.' },
+        ],
+    });
+    my $en_kiosk_ai = run_cgi(
+        script => File::Spec->catfile('admin', 'articles.cgi'),
+        method => 'POST',
+        cookie => "mark6_session=$session_id",
+        body => form_data(
+            command => 'ai_run_selected',
+            id => 'test-article',
+            csrf_token => $csrf,
+            default_lang => 'ja',
+            node => 'oita360',
+            slug => 'beppu-station',
+            title_ja => $saved_article->{langs}{ja}{title},
+            title_en => 'Test article',
+            status => 'published',
+            description_ja => $saved_article->{langs}{ja}{description},
+            body_ja => $saved_article->{langs}{ja}{body},
+            description_en => '<p>Summary</p>',
+            body_en => '<p>Body</p>',
+            ai_run_kiosk => 1,
+            ai_kiosk_lang => 'en',
+        ),
+    );
+    like($en_kiosk_ai, qr/ai=selected_done&ai_kiosk_lang=en\#ai-assist/, 'English AI Kiosk generation keeps selected language after redirect');
+}
+
+my $en_kiosk_ai_article = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($en_kiosk_ai_article->{ai}{kiosks}{en}{lang}, 'en', 'English AI Kiosk result is stored separately');
+is($en_kiosk_ai_article->{ai}{kiosks}{ja}{items}[0]{label}, 'Travel Guide', 'English generation preserves Japanese AI Kiosk result');
+
+my $en_kiosk_apply = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body => form_data(
+        command => 'ai_apply_selected',
+        id => 'test-article',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node => 'oita360',
+        slug => 'beppu-station',
+        title_ja => $saved_article->{langs}{ja}{title},
+        title_en => 'Test article',
+        status => 'published',
+        description_ja => $saved_article->{langs}{ja}{description},
+        body_ja => $saved_article->{langs}{ja}{body},
+        description_en => '<p>Summary</p>',
+        body_en => '<p>Body</p>',
+        ai_apply_kiosk => 1,
+        ai_kiosk_lang => 'en',
+    ),
+);
+like($en_kiosk_apply, qr/ai=kiosk_applied&ai_kiosk_lang=en\#article-editor/, 'English AI Kiosk apply keeps selected language after redirect');
+my $en_kiosk_applied = read_json(File::Spec->catfile($root, 'dat', 'articles', 'test-article.json'));
+is($en_kiosk_applied->{kiosk}{en}{items}[0]{url}, 'https://example.com/beppu-hotels', 'English AI apply preserves an existing administrator URL');
+is($en_kiosk_applied->{kiosk}{en}{items}[1]{label}, 'Book a Beppu tour', 'English AI apply adds a service-link candidate');
+is($en_kiosk_applied->{kiosk}{en}{items}[1]{url}, '', 'English AI candidate requires an administrator URL before publication');
 
 $ai_article->{ai}{seo} = {
     suggested_tags => ['Perl', 'Travel', 'travel', 'Beppu'],
@@ -470,6 +553,10 @@ my $public_en = run_cgi(
 );
 like($public_en, qr/Test article/, 'pretty URL renders English article');
 like($public_en, qr/<p>Body<\/p>/, 'pretty URL renders English body');
+like($public_en, qr/Hotels near Beppu/, 'English page renders only its localized Kiosk item');
+like($public_en, qr{href="https://example\.com/beppu-hotels"}, 'English URL Kiosk uses the entered URL unchanged');
+like($public_en, qr/<span class="kiosk-action">Open link<\/span>/, 'English URL Kiosk renders external link action');
+unlike($public_en, qr/Guide Book/, 'English page does not fall back to Japanese Kiosk');
 
 my $source_update = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),
@@ -538,6 +625,38 @@ like($english_list, qr/Published/, 'article list switches status label to Englis
 like($english_list, qr/>Edit<\/a>/, 'article list switches edit button to English');
 like($english_list, qr/href="\/test\/mark6\/en\/oita360\/beppu-station\/" target="_blank" rel="noopener">View<\/a>/, 'article list view button uses admin language URL');
 unlike($english_list, qr/公開/, 'article list does not keep Japanese status when admin language is English');
+
+my $legacy_kiosk_save = run_cgi(
+    script => File::Spec->catfile('admin', 'articles.cgi'),
+    method => 'POST',
+    cookie => "mark6_session=$session_id",
+    body => form_data(
+        command => 'save',
+        id => 'nested-tags',
+        csrf_token => $csrf,
+        default_lang => 'ja',
+        node => 'oita360',
+        slug => 'nested-tags',
+        status => 'published',
+        title_ja => '入れ子タグ',
+        title_en => 'Nested tags',
+        tags_ja => '日本語タグ',
+        tags_en => 'Nested EN, Travel',
+        description_ja => '<p>日本語</p>',
+        body_ja => '<p>本文</p>',
+        description_en => '<p>English</p>',
+        body_en => '<p>Body</p>',
+        kiosk_enabled_ja => 1,
+        kiosk_label_ja_1 => 'Legacy Guide',
+        kiosk_type_ja_1 => 'amazon',
+        kiosk_keyword_ja_1 => 'legacy guide',
+        kiosk_type_en_1 => 'url',
+    ),
+);
+like($legacy_kiosk_save, qr/Location: articles\.cgi/, 'legacy Kiosk article can be saved');
+my $upgraded_legacy = read_json(File::Spec->catfile($root, 'dat', 'articles', 'nested-tags.json'));
+is($upgraded_legacy->{kiosk}{ja}{items}[0]{keyword}, 'legacy guide', 'saving upgrades legacy Kiosk without losing Japanese data');
+ok(!$upgraded_legacy->{kiosk}{en}{enabled}, 'saving legacy Kiosk creates disabled English configuration');
 
 my $delete = run_cgi(
     script => File::Spec->catfile('admin', 'articles.cgi'),

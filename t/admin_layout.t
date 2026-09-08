@@ -41,6 +41,8 @@ for my $case (
     ['admin/index.cgi',    'dashboard', 'Dashboard'],
     ['admin/home.cgi',     'home',      'Home'],
     ['admin/articles.cgi', 'articles',  'Articles'],
+    ['admin/pages.cgi',    'pages',     'Pages'],
+    ['admin/navigation.cgi', 'navigation', 'Navigation'],
     ['admin/media.cgi',    'media',     'Media'],
     ['admin/settings.cgi', 'settings',  'Settings'],
 ) {
@@ -63,6 +65,8 @@ for my $case (
     like($page, qr/サイト表示/, "$title nav uses Japanese labels");
     like($page, qr/home\.cgi/, "$title nav links home");
     like($page, qr/articles\.cgi/, "$title nav links articles");
+    like($page, qr/pages\.cgi/, "$title nav links pages");
+    like($page, qr/navigation\.cgi/, "$title nav links navigation");
     like($page, qr/media\.cgi/, "$title nav links media");
     like($page, qr/settings\.cgi/, "$title nav links settings");
     like($page, qr/logout\.cgi/, "$title nav links logout");

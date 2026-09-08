@@ -372,6 +372,21 @@ h3 {
   line-height: 1.35;
 }
 
+.free-space {
+  margin-top: 32px;
+  overflow-wrap: anywhere;
+}
+
+.free-space-after-kiosk {
+  margin-top: 48px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.free-space-home-bottom {
+  margin-bottom: 16px;
+}
+
 .back-link {
   display: inline-block;
   margin-bottom: 18px;
@@ -772,8 +787,48 @@ button.compact {
 
 .kiosk-admin-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 1fr) minmax(110px, .35fr) minmax(180px, 1fr) minmax(220px, 1.2fr);
   gap: 12px;
+}
+
+.kiosk-editor .lang-panel {
+  margin-top: 14px;
+}
+
+.navigation-list,
+.free-space-editor .lang-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.navigation-row {
+  display: grid;
+  grid-template-columns: auto minmax(150px, .7fr) minmax(260px, 1.3fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.navigation-row[hidden] {
+  display: none;
+}
+
+.navigation-row-actions {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 1px;
+}
+
+.free-space-field {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.free-space-field h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
 }
 
 .media-upload {
@@ -824,6 +879,21 @@ button.compact {
 .site-footer img {
   width: 78px;
   height: auto;
+}
+
+.footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+}
+
+.footer-nav:empty {
+  display: none;
+}
+
+.footer-nav a {
+  color: #d5dcdf;
 }
 
 .admin-footer {
@@ -893,6 +963,14 @@ button.compact {
 
   .kiosk-admin-row {
     grid-template-columns: 1fr;
+  }
+
+  .navigation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .navigation-row-actions {
+    flex-wrap: wrap;
   }
 
   .ai-apply-bar {

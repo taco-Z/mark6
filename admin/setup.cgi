@@ -116,16 +116,28 @@ sub initialize_site {
             tags    => JSON::PP::true,
             newest  => JSON::PP::true,
             popular => JSON::PP::true,
-            shop    => JSON::PP::false,
             ai      => JSON::PP::false,
         },
         display => {
             articles_per_page => 20,
             mini_articles     => 15,
         },
-        shop => {
-            title     => 'Shop',
-            paypal_id => '',
+        content_checker => {
+            profile => 'default',
+            text_limits => {
+                default => { description_min_chars => 100, body_min_chars => 500 },
+            },
+            slug_check => { enabled => JSON::PP::true, allow_id_slug => JSON::PP::false },
+        },
+        kiosk => {
+            provider      => 'amazon',
+            affiliate_tag => '',
+        },
+        free_space => {
+            map { $_ => {
+                ja => { enabled => JSON::PP::false, html => '' },
+                en => { enabled => JSON::PP::false, html => '' },
+            } } qw(home_bottom article_end after_kiosk)
         },
         ai => {
             provider    => 'openai',

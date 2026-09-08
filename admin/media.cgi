@@ -219,6 +219,7 @@ sub read_multipart_form {
     die "Expected multipart/form-data" unless $content_type =~ /boundary=(?:"([^"]+)"|([^;]+))/;
     my $boundary = $1 || $2;
     my $length = $ENV{CONTENT_LENGTH} || 0;
+    binmode STDIN, ':raw';
     read(STDIN, my $body, $length) if $length > 0;
 
     my %form;

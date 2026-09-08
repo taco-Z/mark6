@@ -228,6 +228,12 @@ sub _random_bytes {
         return $bytes;
     }
 
+    my $bytes = eval {
+        require Crypt::URandom;
+        Crypt::URandom::urandom($length);
+    };
+    return $bytes if defined($bytes) && length($bytes) == $length;
+
     die "Secure random source is not available";
 }
 

@@ -27,6 +27,7 @@ use Mark6::AI;
 use Mark6::Article;
 use Mark6::CGI qw();
 use Mark6::DataStore;
+use Mark6::Kiosk qw(config_for_lang item_type);
 use Mark6::Lang;
 use Mark6::Root;
 
@@ -52,6 +53,9 @@ unless ($user) {
 }
 
 my $command = $params{command} || 'list';
+my $CONTENT_TYPE = ($ENV{MARK6_CONTENT_TYPE} || '') eq 'page' ? 'page' : 'article';
+my $SELF = $CONTENT_TYPE eq 'page' ? 'pages.cgi' : 'articles.cgi';
+my $ACTIVE_NAV = $CONTENT_TYPE eq 'page' ? 'pages' : 'articles';
 
 if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
     unless ($auth->verify_csrf($session, $params{csrf_token} || '')) {
@@ -65,7 +69,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_page($lang->t('admin.article.save_error', 'Save Error'), qq|<p class="error">$error</p>|);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi');
+        Mark6::CGI::redirect($SELF);
         exit;
     }
 
@@ -76,10 +80,10 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             perform_ai_batch($article_id);
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=selected_done#ai-assist');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=selected_done' . ai_kiosk_redirect_param() . '#ai-assist');
         exit;
     }
 
@@ -90,11 +94,11 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             perform_ai_action($article_id, $command);
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
         my $notice_action = $command eq 'ai_suggest' ? 'done' : $command;
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . '#ai-assist');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . ai_kiosk_redirect_param() . '#ai-assist');
         exit;
     }
 
@@ -122,10 +126,10 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             }
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . '#article-editor');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=' . Mark6::CGI::url_encode($notice_action) . ai_kiosk_redirect_param() . '#article-editor');
         exit;
     }
 
@@ -137,10 +141,10 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             apply_ai_result($article_id, $action);
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied#article-editor');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=applied#article-editor');
         exit;
     }
 
@@ -151,10 +155,10 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             apply_ai_tags($article_id);
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=tags_applied#article-editor');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=tags_applied#article-editor');
         exit;
     }
 
@@ -165,10 +169,10 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             apply_ai_kiosk($article_id);
         });
         if ($error) {
-            render_form(load_article($article_id || $params{id} || '') || blank_article(), $lang->t('admin.article.edit', 'Edit Article'), $error);
+            render_form(load_article($article_id || $params{id} || '') || blank_article(), content_label('edit'), $error);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=kiosk_applied#article-editor');
+        Mark6::CGI::redirect($SELF . '?command=edit&id=' . Mark6::CGI::url_encode($article_id) . '&ai=kiosk_applied#article-editor');
         exit;
     }
 
@@ -180,7 +184,7 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_page($lang->t('admin.article.reorder_error', 'Reorder Error'), qq|<p class="error">$error</p>|);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi');
+        Mark6::CGI::redirect($SELF);
         exit;
     }
 
@@ -190,31 +194,31 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
             render_page($lang->t('admin.article.delete_error', 'Delete Error'), qq|<p class="error">$error</p>|);
             exit;
         }
-        Mark6::CGI::redirect('articles.cgi');
+        Mark6::CGI::redirect($SELF);
         exit;
     }
 }
 
 if ($command eq 'new') {
-    render_form(blank_article(), $lang->t('admin.article.new', 'New Article'));
+    render_form(blank_article(), content_label('new'));
 }
 elsif ($command eq 'edit') {
     my $article = load_article($params{id} || '');
-    $article ? render_form($article, $lang->t('admin.article.edit', 'Edit Article')) : render_page($lang->t('admin.common.not_found', 'Not Found'), '<p class="error">' . h($lang->t('admin.article.not_found', 'Article not found.')) . '</p>');
+    $article ? render_form($article, content_label('edit')) : render_page($lang->t('admin.common.not_found', 'Not Found'), '<p class="error">' . h(content_label('not_found')) . '</p>');
 }
 else {
     render_list();
 }
 
 sub render_list {
-    my @articles = grep { ($_->{status} || '') ne 'deleted' } load_articles();
-    my $rows = @articles ? join("\n", map { article_row($_) } @articles) : '<p class="empty">' . h($lang->t('admin.article.empty', 'No articles yet.')) . '</p>';
-    my $page_title = h($lang->t('admin.article.title', 'Articles'));
-    my $new_label = h($lang->t('admin.article.new', 'New Article'));
+    my @articles = grep { ($_->{status} || '') ne 'deleted' && content_type($_) eq $CONTENT_TYPE } load_articles();
+    my $rows = @articles ? join("\n", map { article_row($_) } @articles) : '<p class="empty">' . h(content_label('empty')) . '</p>';
+    my $page_title = h(content_label('title'));
+    my $new_label = h(content_label('new'));
 
-    render_page($lang->t('admin.article.title', 'Articles'), <<"HTML");
+    render_page(content_label('title'), <<"HTML");
 <section class="article-detail">
-  <div class="admin-toolbar"><a class="button" href="articles.cgi?command=new">$new_label</a></div>
+  <div class="admin-toolbar"><a class="button" href="$SELF?command=new">$new_label</a></div>
   <h1>$page_title</h1>
   <div class="admin-list">$rows</div>
 </section>
@@ -243,7 +247,7 @@ sub article_row {
     my $down_label = h($lang->t('admin.article.order_down', 'Down'));
     my $bottom_label = h($lang->t('admin.article.order_bottom', 'Bottom'));
     my $set_label = h($lang->t('admin.article.order_set', 'Set'));
-    my $confirm_delete = js_string($lang->t('admin.article.confirm_delete', 'Delete this article?'));
+    my $confirm_delete = js_string(content_label('confirm_delete'));
 
     return <<"HTML";
 <article class="admin-row">
@@ -253,7 +257,7 @@ sub article_row {
     <div class="meta translation-state">$translations</div>
   </div>
   <div class="admin-actions">
-    <form class="order-actions" method="post" action="articles.cgi">
+    <form class="order-actions" method="post" action="$SELF">
       <input type="hidden" name="command" value="reorder">
       <input type="hidden" name="id" value="$id">
       <input type="hidden" name="csrf_token" value="$csrf">
@@ -266,8 +270,8 @@ sub article_row {
     </form>
     <div class="row-actions">
       <a class="button secondary compact" href="$view_url" target="_blank" rel="noopener">$view_label</a>
-      <a class="button secondary compact" href="articles.cgi?command=edit&amp;id=$id">$edit_label</a>
-      <form method="post" action="articles.cgi" onsubmit="return confirm('$confirm_delete');">
+      <a class="button secondary compact" href="$SELF?command=edit&amp;id=$id">$edit_label</a>
+      <form method="post" action="$SELF" onsubmit="return confirm('$confirm_delete');">
         <input type="hidden" name="command" value="delete">
         <input type="hidden" name="id" value="$id">
         <input type="hidden" name="csrf_token" value="$csrf">
@@ -296,7 +300,7 @@ sub render_form {
     my $draft_selected = $status eq 'draft' ? 'selected' : '';
     my $published_selected = $status eq 'published' ? 'selected' : '';
     my $safe_heading = h($heading);
-    my $articles_label = h($lang->t('admin.article.title', 'Articles'));
+    my $articles_label = h(content_label('title'));
     my $node_label = h($lang->t('admin.article.node', 'Section'));
     my $slug_label = h($lang->t('admin.article.slug', 'URL slug'));
     my $status_label = h($lang->t('admin.article.status', 'Status'));
@@ -308,19 +312,22 @@ sub render_form {
     my $save_label = h($lang->t('admin.common.save', 'Save'));
     my $notice = ai_notice($params{ai} || '');
     my $error_html = $error ? qq|<p class="error">$error</p>| : '';
+    my $node_field = $CONTENT_TYPE eq 'page'
+        ? qq|<input type="hidden" name="node" value="$node">|
+        : qq|<label>$node_label<br><input name="node" type="text" value="$node" required></label>|;
 
     render_page($heading, <<"HTML");
 <section class="article-detail">
-  <a class="back-link" href="articles.cgi">$articles_label</a>
+  <a class="back-link" href="$SELF">$articles_label</a>
   <h1>$safe_heading</h1>
   $notice
   $error_html
-  <form id="article-editor" class="admin-form" method="post" action="articles.cgi">
+  <form id="article-editor" class="admin-form" method="post" action="$SELF">
     <input type="hidden" name="command" value="save">
     <input type="hidden" name="id" value="$id">
     <input type="hidden" name="csrf_token" value="$csrf">
     <input type="hidden" name="default_lang" value="$default_lang">
-    <label>$node_label<br><input name="node" type="text" value="$node" required></label>
+    $node_field
     <label>$slug_label<br><input name="slug" type="text" value="$slug" placeholder="beppu-station"></label>
     <label>$status_label<br>
       <select name="status">
@@ -356,6 +363,32 @@ sub render_form {
         });
       }
     }
+
+    for (const editor of document.querySelectorAll('.kiosk-editor')) {
+      const updateRow = (row) => {
+        const type = row.querySelector('[data-kiosk-type]')?.value || 'amazon';
+        const amazon = row.querySelector('[data-kiosk-amazon]');
+        const url = row.querySelector('[data-kiosk-url]');
+        if (amazon) amazon.hidden = type !== 'amazon';
+        if (url) url.hidden = type !== 'url';
+      };
+      for (const row of editor.querySelectorAll('[data-kiosk-row]')) {
+        updateRow(row);
+        row.querySelector('[data-kiosk-type]')?.addEventListener('change', () => updateRow(row));
+      }
+      for (const button of editor.querySelectorAll('[data-kiosk-add]')) {
+        button.addEventListener('click', () => {
+          const panel = button.closest('.lang-panel');
+          const row = panel && Array.from(panel.querySelectorAll('[data-kiosk-row]')).find((item) => item.hidden);
+          if (row) {
+            row.hidden = false;
+            updateRow(row);
+          }
+          if (!panel || !Array.from(panel.querySelectorAll('[data-kiosk-row]')).some((item) => item.hidden)) button.hidden = true;
+        });
+      }
+    }
+
   })();
   </script>
 </section>
@@ -384,7 +417,7 @@ sub save_article {
     my $article = {
         %{$existing},
         id         => "$id",
-        type       => 'article',
+        type       => $CONTENT_TYPE,
         status     => normalize_status($params{status}),
         default_lang => $default_lang,
         langs      => $langs,
@@ -457,9 +490,11 @@ sub perform_ai_action {
         $article->{ai}{seo} = $seo;
     }
     elsif ($command eq 'ai_kiosk') {
-        my $kiosk = $assistant->suggest_kiosk(article => $article, lang => $default_lang);
-        $kiosk->{lang} = $default_lang;
-        $article->{ai}{kiosk} = $kiosk;
+        my $target_lang = normalize_lang($params{ai_kiosk_lang} || $default_lang);
+        my $kiosk = $assistant->suggest_kiosk(article => $article, lang => $target_lang);
+        $kiosk->{lang} = $target_lang;
+        $article->{ai}{kiosks} ||= {};
+        $article->{ai}{kiosks}{$target_lang} = $kiosk;
     }
     else {
         die "Unknown AI action";
@@ -569,34 +604,48 @@ sub merge_unique_tags {
 sub apply_ai_kiosk {
     my ($id) = @_;
     my $article = load_article($id) or die "Article not found";
-    my $suggested = (($article->{ai} || {})->{kiosk} || {})->{kiosk_items};
+    my $target_lang = normalize_lang($params{ai_kiosk_lang} || Mark6::Article::default_lang($article, $config));
+    my $result = ai_kiosk_result($article, $target_lang);
+    my $suggested = ref($result->{items}) eq 'ARRAY' ? $result->{items} : $result->{kiosk_items};
     die "No AI Kiosk suggestions are available" unless ref($suggested) eq 'ARRAY' && @{$suggested};
 
-    my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+    $target_lang = normalize_lang($result->{lang} || $target_lang);
+    my $localized = localized_kiosk_container($article->{kiosk});
+    my $kiosk = config_for_lang($localized, $target_lang);
     my @existing = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
     my %seen;
     my @items;
 
-    for my $item (@existing, @{$suggested}) {
+    my @candidates = (
+        (map { [existing => $_] } @existing),
+        (map { [suggested => $_] } @{$suggested}),
+    );
+    for my $candidate (@candidates) {
+        my ($source, $item) = @{$candidate};
         next unless ref($item) eq 'HASH';
         my $label = clean_text($item->{label} || '');
         my $keyword = clean_text($item->{keyword} || '');
-        next if $label eq '' && $keyword eq '';
-        $label = $keyword if $label eq '';
-        $keyword = $label if $keyword eq '';
-        my $key = lc "$label\0$keyword";
+        my $url = clean_text($item->{url} || '');
+        next if $label eq '' && $keyword eq '' && $url eq '';
+        $label = $keyword if $label eq '' && $keyword ne '';
+        $label = $url if $label eq '';
+        my $type = $source eq 'existing'
+            ? (item_type($item) || ($target_lang eq 'ja' ? 'amazon' : 'url'))
+            : ($target_lang eq 'ja' ? 'amazon' : 'url');
+        my $target = $type eq 'amazon' ? ($keyword ne '' ? $keyword : $label) : $url;
+        my $key = lc "$type\0$label\0$target";
         next if $seen{$key}++;
-        push @items, {
-            label   => $label,
-            keyword => $keyword,
-        };
+        push @items, $type eq 'amazon'
+            ? { label => $label, type => 'amazon', keyword => $target }
+            : { label => $label, type => 'url', url => $target };
         last if @items >= 5;
     }
 
-    $article->{kiosk} = {
+    $localized->{$target_lang} = {
         enabled => @items ? JSON::PP::true : JSON::PP::false,
         items   => \@items,
     };
+    $article->{kiosk} = $localized;
     $article->{updated_at} = iso_now();
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
     die "Article JSON was not updated at $path" unless -e $path;
@@ -614,7 +663,7 @@ sub reorder_articles {
     die "Invalid article id" unless $id =~ /\A[0-9A-Za-z_-]+\z/;
     die "Invalid order action" unless $action =~ /\A(?:top|up|down|bottom|set)\z/;
 
-    my @articles = grep { ($_->{status} || '') ne 'deleted' } load_articles();
+    my @articles = grep { ($_->{status} || '') ne 'deleted' && content_type($_) eq $CONTENT_TYPE } load_articles();
     return unless @articles > 1;
 
     my ($index) = grep { ($articles[$_]{id} || '') eq $id } 0 .. $#articles;
@@ -673,12 +722,15 @@ sub load_articles {
 sub load_article {
     my ($id) = @_;
     return undef unless $id =~ /\A[0-9A-Za-z_-]+\z/;
-    return $store->read_json('dat', 'articles', "$id.json");
+    my $article = $store->read_json('dat', 'articles', "$id.json");
+    return undef unless $article && content_type($article) eq $CONTENT_TYPE;
+    return $article;
 }
 
 sub blank_article {
     return {
         id => '',
+        type => $CONTENT_TYPE,
         status => 'draft',
         default_lang => 'ja',
         langs => {
@@ -749,36 +801,67 @@ HTML
 
 sub kiosk_fields {
     my ($article) = @_;
-    my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
-    my @items = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
-    my $checked = $kiosk->{enabled} ? 'checked' : '';
     my $legend = h($lang->t('admin.article.kiosk', 'Kiosk'));
     my $enabled_label = h($lang->t('admin.article.kiosk_enabled', 'Show Kiosk links after this article'));
     my $label_text = h($lang->t('admin.article.kiosk_label', 'Label'));
     my $keyword_text = h($lang->t('admin.article.kiosk_keyword', 'Keyword'));
-    my $help = h($lang->t('admin.article.kiosk_help', 'Creates search links only. Prices, stock, reviews, and product images are not stored.'));
-    my @rows;
+    my $type_text = h($lang->t('admin.article.kiosk_type', 'Type'));
+    my $amazon_text = h($lang->t('admin.article.kiosk_type_amazon', 'Amazon'));
+    my $url_text = h($lang->t('admin.article.kiosk_type_url', 'URL'));
+    my $url_label = h($lang->t('admin.article.kiosk_url', 'URL'));
+    my $add_label = h($lang->t('admin.article.kiosk_add', 'Add item'));
+    my $help = h($lang->t('admin.article.kiosk_help', 'Add lightweight external links without storing product data.'));
+    my $default_lang = Mark6::Article::default_lang($article, $config);
+    my (@tabs, @panels);
 
-    for my $index (0 .. 4) {
-        my $item = ref($items[$index]) eq 'HASH' ? $items[$index] : {};
-        my $number = $index + 1;
-        my $label = h($item->{label} || '');
-        my $keyword = h($item->{keyword} || '');
-        push @rows, <<"HTML";
-      <div class="kiosk-admin-row">
-        <label>$label_text $number<br><input name="kiosk_label_$number" type="text" value="$label"></label>
-        <label>$keyword_text $number<br><input name="kiosk_keyword_$number" type="text" value="$keyword"></label>
-      </div>
+    for my $lang_code (@article_langs) {
+        my $kiosk = config_for_lang($article->{kiosk}, $lang_code);
+        my @items = ref($kiosk->{items}) eq 'ARRAY' ? @{$kiosk->{items}} : ();
+        my $checked = $kiosk->{enabled} ? 'checked' : '';
+        my $active = $lang_code eq $default_lang ? ' active' : '';
+        my $hidden = $lang_code eq $default_lang ? '' : ' hidden';
+        my $panel_id = "kiosk-panel-$lang_code";
+        push @tabs, qq|      <button class="lang-tab$active" type="button" data-lang-tab="$panel_id">@{[uc $lang_code]}</button>|;
+        my @rows;
+
+        for my $index (0 .. 4) {
+            my $item = ref($items[$index]) eq 'HASH' ? $items[$index] : {};
+            my $number = $index + 1;
+            my $label = h($item->{label} || '');
+            my $keyword = h($item->{keyword} || '');
+            my $url = h($item->{url} || '');
+            my $type = item_type($item) || ($lang_code eq 'ja' ? 'amazon' : 'url');
+            my $amazon_selected = $type eq 'amazon' ? 'selected' : '';
+            my $url_selected = $type eq 'url' ? 'selected' : '';
+            my $row_hidden = $index >= @items && $index > 0 ? ' hidden' : '';
+            push @rows, <<"HTML";
+        <div class="kiosk-admin-row" data-kiosk-row$row_hidden>
+          <label>$label_text $number<br><input name="kiosk_label_${lang_code}_$number" type="text" value="$label"></label>
+          <label>$type_text<br><select name="kiosk_type_${lang_code}_$number" data-kiosk-type><option value="amazon" $amazon_selected>$amazon_text</option><option value="url" $url_selected>$url_text</option></select></label>
+          <label data-kiosk-amazon>$keyword_text<br><input name="kiosk_keyword_${lang_code}_$number" type="text" value="$keyword"></label>
+          <label data-kiosk-url>$url_label<br><input name="kiosk_url_${lang_code}_$number" type="url" value="$url" placeholder="https://example.com/"></label>
+        </div>
+HTML
+        }
+
+        push @panels, <<"HTML";
+      <section id="$panel_id" class="lang-panel$active"$hidden>
+        <label><input name="kiosk_enabled_$lang_code" type="checkbox" value="1" $checked> $enabled_label</label>
+        <div class="kiosk-admin-grid" data-kiosk-rows>
+@{[join '', @rows]}        </div>
+        <button class="button secondary compact" type="button" data-kiosk-add>$add_label</button>
+      </section>
 HTML
     }
 
     return <<"HTML";
-    <fieldset>
+    <fieldset class="language-editor kiosk-editor">
       <legend>$legend</legend>
-      <label><input name="kiosk_enabled" type="checkbox" value="1" $checked> $enabled_label</label>
       <p class="meta">$help</p>
-      <div class="kiosk-admin-grid">
-@{[join '', @rows]}      </div>
+      <div class="lang-tabs" role="tablist">
+@{[join "\n", @tabs]}
+      </div>
+@{[join "\n", @panels]}
     </fieldset>
 HTML
 }
@@ -884,13 +967,16 @@ sub ai_panel {
     my $apply_selected_label = h($lang->t('admin.ai.apply_selected', 'Apply selected AI results'));
     my $apply_target_label = h($lang->t('admin.ai.apply_target', 'Results to apply'));
     my $target_label = h($lang->t('admin.ai.target_lang', 'Translation language'));
+    my $kiosk_target_label = h($lang->t('admin.ai.kiosk_target_lang', 'Kiosk language'));
+    my $kiosk_target_help = h($lang->t('admin.ai.kiosk_target_help', 'Japanese creates Amazon search candidates. Other languages create service-link candidates whose URLs you enter before publishing.'));
     my $draft = $ai->{draft} || {};
     my $rewrite = $ai->{rewrite} || {};
     my $seo_rewrite = $ai->{seo_rewrite} || {};
     my $target_lang = ai_target_lang($article);
     my $translation = ($ai->{translations} || {})->{$target_lang} || {};
     my $seo = $ai->{seo} || {};
-    my $kiosk = $ai->{kiosk} || {};
+    my $kiosk_lang = normalize_lang($params{ai_kiosk_lang} || Mark6::Article::default_lang($article, $config));
+    my $kiosk = ai_kiosk_result($article, $kiosk_lang);
     my $draft_body = h($draft->{body} || '');
     my $rewrite_body = h($rewrite->{body} || '');
     my $seo_rewrite_body = h($seo_rewrite->{body} || '');
@@ -902,6 +988,7 @@ sub ai_panel {
     my $seo_diagnosis = h($seo->{diagnosis} || '');
     my $kiosk_items = ai_kiosk_items($kiosk);
     my $target_options = ai_target_options($article, $target_lang);
+    my $kiosk_target_options = ai_kiosk_target_options($kiosk_lang);
     my $draft_meta = ai_result_meta($draft);
     my $rewrite_meta = ai_result_meta($rewrite);
     my $seo_rewrite_meta = ai_result_meta($seo_rewrite);
@@ -922,7 +1009,7 @@ sub ai_panel {
             seo_rewrite => $seo_rewrite_label,
             translation => $translate_label,
             tags        => $tag_add_label,
-            kiosk       => $kiosk_add_label,
+            kiosk       => $kiosk_add_label . ' (' . uc($kiosk_lang) . ')',
         },
     );
     my $apply_panel = $apply_controls ne '' ? <<"HTML" : '';
@@ -981,7 +1068,11 @@ HTML
           <section id="ai-panel-seo" class="lang-panel" hidden>
             <div class="ai-action-grid">
               <label class="ai-toggle"><input name="ai_run_seo" type="checkbox" value="1"> $seo_label</label>
-              <label class="ai-toggle"><input name="ai_run_kiosk" type="checkbox" value="1"> $kiosk_label</label>
+              <div>
+                <label class="ai-toggle"><input name="ai_run_kiosk" type="checkbox" value="1"> $kiosk_label</label>
+                <label>$kiosk_target_label<br><select name="ai_kiosk_lang">$kiosk_target_options</select></label>
+                <p class="meta">$kiosk_target_help</p>
+              </div>
             </div>
             <div class="ai-result-grid">
               <section class="ai-result-box">
@@ -1018,7 +1109,8 @@ HTML
 
 sub ai_kiosk_items {
     my ($kiosk) = @_;
-    my @items = ref($kiosk->{kiosk_items}) eq 'ARRAY' ? @{$kiosk->{kiosk_items}} : ();
+    my $source = ref($kiosk->{items}) eq 'ARRAY' ? $kiosk->{items} : $kiosk->{kiosk_items};
+    my @items = ref($source) eq 'ARRAY' ? @{$source} : ();
     return '<p class="empty">' . h($lang->t('admin.ai.kiosk_empty', 'No Kiosk suggestions yet.')) . '</p>' unless @items;
 
     my @rows;
@@ -1050,7 +1142,8 @@ sub ai_apply_controls {
     push @options, [translation => $labels->{translation}] if ($translation->{body} || $translation->{title} || '') ne '';
     my $suggested = (($args{seo} || {})->{suggested_tags}) || [];
     push @options, [tags => $labels->{tags}] if ref($suggested) eq 'ARRAY' && @{$suggested};
-    my $kiosk_items = (($args{kiosk} || {})->{kiosk_items}) || [];
+    my $kiosk_result = $args{kiosk} || {};
+    my $kiosk_items = ref($kiosk_result->{items}) eq 'ARRAY' ? $kiosk_result->{items} : ($kiosk_result->{kiosk_items} || []);
     push @options, [kiosk => $labels->{kiosk}] if ref($kiosk_items) eq 'ARRAY' && @{$kiosk_items};
 
     return join "\n", map {
@@ -1091,6 +1184,35 @@ sub ai_target_options {
         push @options, qq|<option value="$code" $is_selected>| . uc($code) . q|</option>|;
     }
     return join "\n", @options;
+}
+
+sub ai_kiosk_target_options {
+    my ($selected) = @_;
+    return join "\n", map {
+        my $code = $_;
+        my $is_selected = $code eq $selected ? 'selected' : '';
+        qq|<option value="$code" $is_selected>| . uc($code) . q|</option>|;
+    } @article_langs;
+}
+
+sub ai_kiosk_result {
+    my ($article, $target_lang) = @_;
+    my $ai = ref($article->{ai}) eq 'HASH' ? $article->{ai} : {};
+    my $localized = ref($ai->{kiosks}) eq 'HASH' ? $ai->{kiosks}{$target_lang} : undef;
+    return $localized if ref($localized) eq 'HASH';
+
+    my $legacy = ref($ai->{kiosk}) eq 'HASH' ? $ai->{kiosk} : {};
+    my $legacy_lang = normalize_lang($legacy->{lang} || Mark6::Article::default_lang($article, $config));
+    return $legacy if $legacy_lang eq $target_lang;
+    return {};
+}
+
+sub ai_kiosk_redirect_param {
+    return '' unless ($command eq 'ai_run_selected' && ($params{ai_run_kiosk} || '') eq '1')
+        || $command eq 'ai_kiosk'
+        || ($command eq 'ai_apply_selected' && ($params{ai_apply_kiosk} || '') eq '1');
+    return '' unless exists $params{ai_kiosk_lang};
+    return '&ai_kiosk_lang=' . Mark6::CGI::url_encode(normalize_lang($params{ai_kiosk_lang} || ''));
 }
 
 sub ai_notice {
@@ -1199,27 +1321,46 @@ sub save_node_labels {
 
 sub collect_kiosk {
     my ($existing) = @_;
-    my $has_kiosk_params = ($params{kiosk_enabled} || '') ne '';
-    for my $number (1 .. 5) {
-        $has_kiosk_params ||= exists $params{"kiosk_label_$number"} || exists $params{"kiosk_keyword_$number"};
+    my $has_kiosk_params = 0;
+    for my $lang_code (@article_langs) {
+        $has_kiosk_params ||= exists $params{"kiosk_enabled_$lang_code"};
+        for my $number (1 .. 5) {
+            $has_kiosk_params ||= exists $params{"kiosk_label_${lang_code}_$number"}
+                || exists $params{"kiosk_keyword_${lang_code}_$number"}
+                || exists $params{"kiosk_url_${lang_code}_$number"};
+        }
     }
     return $existing->{kiosk} if !$has_kiosk_params && ref($existing->{kiosk}) eq 'HASH';
 
-    my @items;
-    for my $number (1 .. 5) {
-        my $label = clean_text($params{"kiosk_label_$number"} || '');
-        my $keyword = clean_text($params{"kiosk_keyword_$number"} || '');
-        next if $label eq '' && $keyword eq '';
-        push @items, {
-            label   => $label ne '' ? $label : $keyword,
-            keyword => $keyword ne '' ? $keyword : $label,
+    my $localized = localized_kiosk_container($existing->{kiosk});
+    for my $lang_code (@article_langs) {
+        my @items;
+        for my $number (1 .. 5) {
+            my $label = clean_text($params{"kiosk_label_${lang_code}_$number"} || '');
+            my $type = ($params{"kiosk_type_${lang_code}_$number"} || '') eq 'url' ? 'url' : 'amazon';
+            my $keyword = clean_text($params{"kiosk_keyword_${lang_code}_$number"} || '');
+            my $url = clean_text($params{"kiosk_url_${lang_code}_$number"} || '');
+            next if $label eq '' && $keyword eq '' && $url eq '';
+            push @items, $type eq 'url'
+                ? { label => $label ne '' ? $label : $url, type => 'url', url => $url }
+                : { label => $label ne '' ? $label : $keyword, type => 'amazon', keyword => $keyword ne '' ? $keyword : $label };
+        }
+        $localized->{$lang_code} = {
+            enabled => ($params{"kiosk_enabled_$lang_code"} || '') eq '1' ? JSON::PP::true : JSON::PP::false,
+            items => \@items,
         };
     }
 
-    return {
-        enabled => ($params{kiosk_enabled} || '') eq '1' ? JSON::PP::true : JSON::PP::false,
-        items   => \@items,
-    };
+    return $localized;
+}
+
+sub localized_kiosk_container {
+    my ($kiosk) = @_;
+    return {} unless ref($kiosk) eq 'HASH';
+    if (exists $kiosk->{enabled} || exists $kiosk->{items} || exists $kiosk->{mode}) {
+        return { ja => { %{$kiosk} } };
+    }
+    return { %{$kiosk} };
 }
 
 sub clean_text {
@@ -1239,7 +1380,7 @@ sub render_page {
     my ($title, $content) = @_;
     Mark6::Admin::render_page(
         title   => $title,
-        active  => 'articles',
+        active  => $ACTIVE_NAV,
         root    => $ROOT,
         lang    => $lang,
         content => $content,
@@ -1319,12 +1460,34 @@ sub article_initial_sort_order {
     return existing_sort_order($existing) if ($existing->{id} || '') ne '';
 
     my $min;
-    for my $article (load_articles()) {
+    for my $article (grep { content_type($_) eq $CONTENT_TYPE } load_articles()) {
         my $order = article_sort_order($article);
         next if $order eq '';
         $min = $order if !defined($min) || $order < $min;
     }
     return defined($min) ? $min - 10 : 10;
+}
+
+sub content_type {
+    my ($article) = @_;
+    return Mark6::Article::content_type($article);
+}
+
+sub content_label {
+    my ($name) = @_;
+    my %fallback = $CONTENT_TYPE eq 'page'
+        ? (
+            title => 'Pages', new => 'New Page', edit => 'Edit Page',
+            empty => 'No pages yet.', not_found => 'Page not found.',
+            confirm_delete => 'Delete this page?',
+        )
+        : (
+            title => 'Articles', new => 'New Article', edit => 'Edit Article',
+            empty => 'No articles yet.', not_found => 'Article not found.',
+            confirm_delete => 'Delete this article?',
+        );
+    my $prefix = $CONTENT_TYPE eq 'page' ? 'admin.page.' : 'admin.article.';
+    return $lang->t($prefix . $name, $fallback{$name} || '');
 }
 
 sub normalize_status {

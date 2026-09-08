@@ -80,6 +80,7 @@ sub render_settings {
     my $ai_api_key_file = Mark6::CGI::escape_html($config->{ai}{api_key_file} || '');
     my $amazon_affiliate_tag = Mark6::CGI::escape_html($config->{kiosk}{affiliate_tag} || '');
     my $node_fields = node_settings_fields($config);
+    my $free_space_fields = free_space_fields($config);
 
     my $tags_checked = checked($config->{features}{tags});
     my $newest_checked = checked($config->{features}{newest});
@@ -114,6 +115,8 @@ sub render_settings {
     my $nodes_help = h($lang->t('admin.settings.nodes_help', 'Sections shown in the public header. The ID is used in URLs.'));
     my $amazon_affiliate_tag_label = h($lang->t('admin.settings.amazon_affiliate_tag', 'Amazon Associate tag'));
     my $amazon_affiliate_tag_help = h($lang->t('admin.settings.amazon_affiliate_tag_help', 'Optional. Added to Amazon Kiosk search links as the tag parameter.'));
+    my $free_space_label = h($lang->t('admin.settings.free_space', 'Free Space'));
+    my $free_space_help = h($lang->t('admin.settings.free_space_help', 'Optional administrator-managed HTML for the three fixed public slots.'));
     my $save_label = h($lang->t('admin.settings.save', 'Save Settings'));
 
     render_page($lang->t('admin.common.settings', 'Settings'), <<"HTML");
@@ -156,6 +159,11 @@ sub render_settings {
       <label>$amazon_affiliate_tag_label<br><input name="amazon_affiliate_tag" type="text" value="$amazon_affiliate_tag"></label>
       <p class="meta">$amazon_affiliate_tag_help</p>
     </fieldset>
+    <fieldset class="language-editor free-space-editor">
+      <legend>$free_space_label</legend>
+      <p class="meta">$free_space_help</p>
+      $free_space_fields
+    </fieldset>
     <fieldset>
       <legend>$ai_label</legend>
       <label>$ai_provider_label<br>
@@ -184,6 +192,7 @@ sub save_settings {
     $config->{display} ||= {};
     $config->{kiosk} ||= {};
     $config->{ai} ||= {};
+    $config->{free_space} ||= {};
     $config->{nodes} = collect_nodes();
 
     $config->{site}{title} = $params{site_title} || 'MARK6 Site';
@@ -206,8 +215,79 @@ sub save_settings {
     $config->{ai}{model} = clean_text($params{ai_model} || 'gpt-5.2');
     $config->{ai}{api_key_env} = clean_env_name($params{ai_api_key_env} || 'MARK6_OPENAI_API_KEY');
     $config->{ai}{api_key_file} = clean_path($params{ai_api_key_file} || '');
+    $config->{free_space} = collect_free_space();
 
     $store->write_json($config, 'dat', 'config.json');
+}
+
+sub free_space_fields {
+    my ($config) = @_;
+    my @langs = qw(ja en);
+    my @slots = qw(home_bottom article_end after_kiosk);
+    my @tabs;
+    my @panels;
+    my $all = ref($config->{free_space}) eq 'HASH' ? $config->{free_space} : {};
+
+    for my $index (0 .. $#langs) {
+        my $code = $langs[$index];
+        my $active = $index == 0 ? ' active' : '';
+        my $hidden = $index == 0 ? '' : ' hidden';
+        my $panel_id = "free-space-panel-$code";
+        push @tabs, qq|<button class="lang-tab$active" type="button" data-lang-tab="$panel_id">@{[uc $code]}</button>|;
+        my @fields;
+        for my $slot (@slots) {
+            my $localized = ref($all->{$slot}) eq 'HASH' ? $all->{$slot} : {};
+            my $entry = ref($localized->{$code}) eq 'HASH' ? $localized->{$code} : {};
+            my $enabled = checked($entry->{enabled});
+            my $html = h($entry->{html} || '');
+            my $slot_label = h($lang->t("admin.settings.free_space_$slot", $slot));
+            my $show_label = h($lang->t('admin.settings.free_space_enabled', 'Enable this slot'));
+            push @fields, <<"HTML";
+        <div class="free-space-field">
+          <h3>$slot_label</h3>
+          <label><input name="free_space_${slot}_${code}_enabled" type="checkbox" value="1" $enabled> $show_label</label>
+          <textarea name="free_space_${slot}_${code}_html" rows="6" spellcheck="false">$html</textarea>
+        </div>
+HTML
+        }
+        push @panels, qq|<section id="$panel_id" class="lang-panel$active"$hidden>| . join('', @fields) . '</section>';
+    }
+
+    return '<div class="lang-tabs" role="tablist">' . join('', @tabs) . '</div>' . join('', @panels) . free_space_script();
+}
+
+sub free_space_script {
+    return <<'HTML';
+<script>
+(() => {
+  for (const group of document.querySelectorAll('.free-space-editor')) {
+    const tabs = Array.from(group.querySelectorAll('[data-lang-tab]'));
+    const panels = Array.from(group.querySelectorAll('.lang-panel'));
+    tabs.forEach((tab) => tab.addEventListener('click', () => {
+      tabs.forEach((item) => item.classList.toggle('active', item === tab));
+      panels.forEach((panel) => {
+        const active = panel.id === tab.dataset.langTab;
+        panel.hidden = !active;
+        panel.classList.toggle('active', active);
+      });
+    }));
+  }
+})();
+</script>
+HTML
+}
+
+sub collect_free_space {
+    my %free_space;
+    for my $slot (qw(home_bottom article_end after_kiosk)) {
+        for my $code (qw(ja en)) {
+            $free_space{$slot}{$code} = {
+                enabled => bool_param("free_space_${slot}_${code}_enabled"),
+                html => $params{"free_space_${slot}_${code}_html"} || '',
+            };
+        }
+    }
+    return \%free_space;
 }
 
 sub load_config {
@@ -216,8 +296,14 @@ sub load_config {
         site => { title => 'MARK6 Site', base_url => '', language => 'ja' },
         features => { tags => JSON::PP::true, newest => JSON::PP::true, popular => JSON::PP::true, ai => JSON::PP::false },
         display => { articles_per_page => 20, mini_articles => 15 },
+        content_checker => {
+            profile => 'default',
+            text_limits => { default => { description_min_chars => 100, body_min_chars => 500 } },
+            slug_check => { enabled => JSON::PP::true, allow_id_slug => JSON::PP::false },
+        },
         nodes => {},
         kiosk => { provider => 'amazon', affiliate_tag => '' },
+        free_space => {},
         ai => { provider => 'openai', model => 'gpt-5.2', api_key_env => 'MARK6_OPENAI_API_KEY', api_key_file => '' },
     };
 }

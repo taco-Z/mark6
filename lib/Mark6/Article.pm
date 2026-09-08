@@ -125,9 +125,19 @@ sub slug_for {
 
 sub public_path {
     my ($article, $lang, $config) = @_;
-    my $node = node_for($article, $config || {});
     my $slug = slug_for($article);
+    if (content_type($article) eq 'page') {
+        my $default = ($config || {})->{site}{default_lang} || ($config || {})->{site}{language} || 'ja';
+        return "/$slug/" if ($lang || '') eq $default;
+        return "/$lang/$slug/";
+    }
+    my $node = node_for($article, $config || {});
     return "/$lang/$node/$slug/";
+}
+
+sub content_type {
+    my ($article) = @_;
+    return (($article || {})->{type} || 'article') eq 'page' ? 'page' : 'article';
 }
 
 sub _first_text {

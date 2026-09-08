@@ -65,6 +65,8 @@ like($settings, qr/name="ai_api_key_file"/, 'settings form includes AI key file 
 like($settings, qr/name="amazon_affiliate_tag"/, 'settings form includes Amazon Associate tag field');
 like($settings, qr/name="node_id_1"/, 'settings form includes section ID field');
 like($settings, qr/name="node_label_en_1"/, 'settings form includes English section label field');
+like($settings, qr/name="free_space_home_bottom_ja_enabled"/, 'settings form includes Japanese home free-space toggle');
+like($settings, qr/name="free_space_after_kiosk_en_html"/, 'settings form includes English after-Kiosk HTML field');
 unlike($settings, qr/name="feature_shop"/, 'settings form does not show old shop feature switch');
 unlike($settings, qr/name="paypal_id"/, 'settings form does not show old shop section');
 my ($csrf) = $settings =~ /name="csrf_token" value="([0-9a-f]+)"/;
@@ -95,6 +97,11 @@ my $save = run_cgi(
         ai_model => 'custom-model',
         ai_api_key_env => 'CUSTOM_OPENAI_KEY',
         ai_api_key_file => '/home/example/.mark6_openai_key',
+        free_space_home_bottom_ja_enabled => 1,
+        free_space_home_bottom_ja_html => '<aside>Japanese sponsor</aside>',
+        free_space_home_bottom_en_html => '<aside>English sponsor</aside>',
+        free_space_article_end_en_enabled => 1,
+        free_space_article_end_en_html => '<aside>English CTA</aside>',
     ),
 );
 like($save, qr/Location: settings\.cgi\?saved=1/, 'settings save redirects');
@@ -119,6 +126,10 @@ is($config->{ai}{provider}, 'openai', 'ai provider saved');
 is($config->{ai}{model}, 'custom-model', 'ai model saved');
 is($config->{ai}{api_key_env}, 'CUSTOM_OPENAI_KEY', 'ai api key env saved');
 is($config->{ai}{api_key_file}, '/home/example/.mark6_openai_key', 'ai api key file saved');
+ok($config->{free_space}{home_bottom}{ja}{enabled}, 'Japanese home free space enabled flag saved');
+is($config->{free_space}{home_bottom}{ja}{html}, '<aside>Japanese sponsor</aside>', 'Japanese home free space HTML saved unchanged');
+ok(!$config->{free_space}{home_bottom}{en}{enabled}, 'unchecked English home free space remains disabled');
+ok($config->{free_space}{article_end}{en}{enabled}, 'English article-end free space enabled flag saved');
 
 my $public = run_cgi(
     script => File::Spec->catfile('public', 'index.cgi'),
