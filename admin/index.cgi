@@ -56,6 +56,9 @@ my $dashboard_title = Mark6::CGI::escape_html($lang->t('admin.dashboard.title', 
 my $logged_in_as = Mark6::CGI::escape_html($lang->t('admin.dashboard.logged_in_as', 'Logged in as'));
 my $edit_home = Mark6::CGI::escape_html($lang->t('admin.dashboard.edit_home', 'Edit Home'));
 my $manage_articles = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_articles', 'Manage Articles'));
+my $manage_pages = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_pages', 'Manage Pages'));
+my $manage_navigation = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_navigation', 'Navigation'));
+my $content_check = Mark6::CGI::escape_html($lang->t('admin.dashboard.content_check', 'Content Check'));
 my $manage_media = Mark6::CGI::escape_html($lang->t('admin.dashboard.manage_media', 'Manage Media'));
 my $site_settings = Mark6::CGI::escape_html($lang->t('admin.dashboard.site_settings', 'Site Settings'));
 my $stats = Mark6::Stats->new(root => $ROOT)->access_summary();
@@ -63,6 +66,8 @@ my $access_title = Mark6::CGI::escape_html($lang->t('admin.dashboard.access_titl
 my $today_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.today_views', 'Today'));
 my $week_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.week_views', 'Last 7 days'));
 my $total_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.logged_views', 'Logged views'));
+my $legacy_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.legacy_views', 'Historical views before bot filtering'));
+my $legacy_help = Mark6::CGI::escape_html($lang->t('admin.dashboard.legacy_views_help', 'These records did not retain a User-Agent and cannot be classified as human traffic.'));
 my $popular_title = Mark6::CGI::escape_html($lang->t('admin.dashboard.popular_articles', 'Popular articles'));
 my $no_popular = Mark6::CGI::escape_html($lang->t('admin.dashboard.no_access_data', 'No access data yet.'));
 my $views_label = Mark6::CGI::escape_html($lang->t('admin.dashboard.views', 'views'));
@@ -86,6 +91,9 @@ Mark6::Admin::render_page(
       <div class="admin-menu">
         <a class="button" href="home.cgi">$edit_home</a>
         <a class="button" href="articles.cgi">$manage_articles</a>
+        <a class="button" href="pages.cgi">$manage_pages</a>
+        <a class="button secondary" href="navigation.cgi">$manage_navigation</a>
+        <a class="button secondary" href="quality.cgi">$content_check</a>
         <a class="button secondary" href="media.cgi">$manage_media</a>
         <a class="button secondary" href="settings.cgi">$site_settings</a>
       </div>
@@ -96,6 +104,7 @@ Mark6::Admin::render_page(
           <div class="stat"><span>$week_label</span><strong>@{[$stats->{week_views} || 0]}</strong></div>
           <div class="stat"><span>$total_label</span><strong>@{[$stats->{total_views} || 0]}</strong></div>
         </div>
+        <p class="meta">$legacy_label: @{[$stats->{legacy_views} || 0]}<br>$legacy_help</p>
         <h2>$popular_title</h2>
         <ul class="popular-list">$popular_rows</ul>
       </section>

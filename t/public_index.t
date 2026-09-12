@@ -219,7 +219,7 @@ like($home, qr/別府駅/, 'renders default language article summary');
 like($home, qr/<div class="summary-taxonomy"><span>オオイタビ<\/span><span>別府市<\/span><span>スポット<\/span><\/div>/, 'renders Japanese localized article taxonomy');
 like($home, qr/href="\/test\/mark6\/ja\/oita360\/beppu-station\/"/, 'renders localized article URL');
 like($home, qr/class="language-switch"/, 'renders language switch links');
-like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=5"/, 'renders versioned asset URL from asset base');
+like($home, qr/href="\/test\/mark6\/assets\/css\/mark6\.css\?v=6"/, 'renders versioned asset URL from asset base');
 like($home, qr/mark6-icon\.svg/, 'renders MARK6 favicon');
 like($home, qr/mark6-logo-light\.svg/, 'renders MARK6 footer logo');
 like($home, qr/href="\/test\/mark6\/ja\/"/, 'renders home URL from site base');
@@ -254,10 +254,10 @@ like($en_detail, qr/>Articles<\/a>/, 'renders English articles navigation label'
 like($en_detail, qr/href="\/test\/mark6\/en\/oita360\/">Oita 360<\/a>/, 'renders English section navigation label');
 like($en_detail, qr/<meta name="description" content="About Beppu Station">/, 'uses localized content when no matching language SEO description exists');
 unlike($en_detail, qr/Japanese SEO description/, 'does not use a different language SEO description');
-like($en_detail, qr/>Kiosk<\/h2>/, 'renders English kiosk heading');
-like($en_detail, qr/<span class="kiosk-action">Search Amazon<\/span>/, 'renders English kiosk action label');
+unlike($en_detail, qr/>Kiosk<\/h2>/, 'legacy Japanese Kiosk does not appear on English article');
+unlike($en_detail, qr/Guide Book/, 'English article does not fall back to legacy Japanese Kiosk');
 my $en_home = run_cgi('', '/en/');
-like($en_home, qr/<span class="kiosk-action">Search Amazon<\/span>/, 'renders English home Kiosk action label');
+unlike($en_home, qr/Home Guide/, 'English home does not fall back to legacy Japanese Kiosk');
 like($en_home, qr/<div class="summary-taxonomy"><span>Oita Travel<\/span><span>Beppu<\/span><span>Spot<\/span><\/div>/, 'renders English localized article taxonomy');
 my $nested_en_detail = run_cgi('', '/en/oita360/nested-tags/');
 like($nested_en_detail, qr/Nested tags/, 'renders nested-tag compatibility article');
@@ -289,6 +289,35 @@ write_json(File::Spec->catfile($root, 'dat', 'home.json'), $home_data);
 my $auto_kiosk_home = run_cgi('', '/ja/');
 like($auto_kiosk_home, qr/<span class="kiosk-label">Guide Book<\/span>/, 'auto home Kiosk reuses article Kiosk items');
 like($auto_kiosk_home, qr/<span class="kiosk-label">Local Gift<\/span>/, 'auto home Kiosk renders another unique article Kiosk item');
+
+my $localized_article = read_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'));
+$localized_article->{kiosk} = {
+    ja => $localized_article->{kiosk},
+    en => {
+        enabled => JSON::PP::true,
+        items => [
+            { label => 'Hotels near Beppu', type => 'url', url => 'https://example.com/hotels?city=beppu' },
+            { label => 'Unsafe link', type => 'url', url => 'javascript:alert(1)' },
+        ],
+    },
+};
+write_json(File::Spec->catfile($root, 'dat', 'articles', '1375451805.json'), $localized_article);
+my $localized_en_detail = run_cgi('', '/en/oita360/beppu-station/');
+like($localized_en_detail, qr/>Kiosk<\/h2>/, 'renders localized English Kiosk');
+like($localized_en_detail, qr/Hotels near Beppu/, 'renders English URL Kiosk label');
+like($localized_en_detail, qr{href="https://example\.com/hotels\?city=beppu"}, 'uses entered external URL unchanged');
+like($localized_en_detail, qr/<span class="kiosk-action">Open link<\/span>/, 'renders URL Kiosk action label');
+unlike($localized_en_detail, qr/Unsafe link/, 'does not render a URL with an unsafe scheme');
+unlike($localized_en_detail, qr/Guide Book/, 'localized English Kiosk does not include Japanese items');
+
+$home_data->{kiosk} = {
+    ja => $home_data->{kiosk},
+    en => { enabled => JSON::PP::true, mode => 'auto', items => [] },
+};
+write_json(File::Spec->catfile($root, 'dat', 'home.json'), $home_data);
+my $auto_en_home = run_cgi('', '/en/');
+like($auto_en_home, qr/Hotels near Beppu/, 'English auto home Kiosk reuses English article Kiosk items');
+unlike($auto_en_home, qr/Guide Book/, 'English auto home Kiosk does not reuse Japanese article Kiosk items');
 
 my $root_top = run_cgi('', '/', '', 'en-US,en;q=0.9');
 like($root_top, qr/Status: 302 Found/, 'root redirects to initial language');
@@ -333,6 +362,94 @@ like($ja_tag_list, qr/別府駅/, 'localized Japanese tag filters articles');
 my $disabled_kiosk = run_cgi('', '/ja/oita360/older-post/');
 unlike($disabled_kiosk, qr/Hidden Item/, 'does not render disabled kiosk items');
 
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'about-page.json'), {
+    id => 'about-page',
+    type => 'page',
+    status => 'published',
+    default_lang => 'ja',
+    slug => 'about',
+    langs => {
+        ja => { title => 'このサイトについて', description => '', body => '<p>固定ページ本文</p>' },
+        en => { title => 'About this site', description => '', body => '<p>English page body</p>' },
+    },
+    created_at => '2026-09-09T00:00:00Z',
+});
+
+my $page_ja = run_cgi('', '/about/');
+like($page_ja, qr/このサイトについて/, 'renders default-language fixed page without language prefix');
+like($page_ja, qr/固定ページ本文/, 'renders fixed page body');
+like($page_ja, qr/href="\/test\/mark6\/en\/about\/"/, 'fixed page language switch uses page URL');
+unlike($page_ja, qr/class="kiosk"/, 'fixed page does not render article Kiosk');
+
+my $page_en = run_cgi('', '/en/about/');
+like($page_en, qr/About this site/, 'renders English fixed page');
+like($page_en, qr/English page body/, 'renders English fixed page body');
+
+my $article_list_without_page = run_cgi('', '/ja/oita360/');
+unlike($article_list_without_page, qr/このサイトについて/, 'fixed page is excluded from article list');
+
+my $enhanced_config = read_json(File::Spec->catfile($root, 'dat', 'config.json'));
+$enhanced_config->{navigation} = {
+    header => {
+        ja => [
+            { label => 'ホームへ', url => '/', enabled => JSON::PP::true },
+            { label => 'このサイトについて', url => '/about/', enabled => JSON::PP::true },
+            { label => '非表示', url => '/hidden/', enabled => JSON::PP::false },
+        ],
+        en => [ { label => 'About', url => '/en/about/', enabled => JSON::PP::true } ],
+    },
+    footer => {
+        ja => [ { label => 'プライバシー', url => '/privacy/', enabled => JSON::PP::true } ],
+        en => [ { label => 'Privacy', url => '/en/privacy/', enabled => JSON::PP::true } ],
+    },
+};
+$enhanced_config->{free_space} = {
+    home_bottom => {
+        ja => { enabled => JSON::PP::true, html => '<aside>HOME FREE JA</aside>' },
+        en => { enabled => JSON::PP::false, html => '<aside>HOME FREE EN</aside>' },
+    },
+    article_end => {
+        ja => { enabled => JSON::PP::true, html => '<aside>ARTICLE END JA</aside>' },
+    },
+    after_kiosk => {
+        ja => { enabled => JSON::PP::true, html => '<aside>AFTER KIOSK JA</aside>' },
+    },
+};
+write_json(File::Spec->catfile($root, 'dat', 'config.json'), $enhanced_config);
+
+my $configured_home = run_cgi('', '/ja/');
+like($configured_home, qr/>ホーム<\/a>/, 'configured navigation keeps automatic home link by default');
+like($configured_home, qr/href="\/test\/mark6\/ja\/">ホームへ<\/a>/, 'configured root navigation uses localized home URL and site base');
+like($configured_home, qr/href="\/test\/mark6\/about\/">このサイトについて<\/a>/, 'configured fixed-page navigation uses site base');
+unlike($configured_home, qr/>非表示<\/a>/, 'disabled navigation item is hidden');
+like($configured_home, qr/<nav class="footer-nav"><a href="\/test\/mark6\/privacy\/">プライバシー<\/a><\/nav>/, 'renders configured footer navigation');
+like($configured_home, qr/<section class="free-space free-space-home-bottom"><aside>HOME FREE JA<\/aside><\/section>/, 'renders Japanese home free space');
+
+my $configured_en_home = run_cgi('', '/en/');
+like($configured_en_home, qr/href="\/test\/mark6\/en\/about\/">About<\/a>/, 'renders English navigation independently');
+unlike($configured_en_home, qr/HOME FREE JA/, 'English free space does not fall back to Japanese');
+unlike($configured_en_home, qr/HOME FREE EN/, 'disabled English free space is hidden');
+
+$enhanced_config->{navigation}{header}{system} = {
+    home => JSON::PP::false,
+    articles => JSON::PP::false,
+    sections => JSON::PP::false,
+};
+write_json(File::Spec->catfile($root, 'dat', 'config.json'), $enhanced_config);
+my $manual_only_home = run_cgi('', '/ja/');
+unlike($manual_only_home, qr/>ホーム<\/a>/, 'automatic home link can be disabled');
+unlike($manual_only_home, qr/>記事<\/a>/, 'automatic articles link can be disabled');
+like($manual_only_home, qr/>ホームへ<\/a>/, 'manual navigation remains after disabling automatic links');
+
+my $configured_detail = run_cgi('', '/ja/oita360/beppu-station/');
+like($configured_detail, qr/ARTICLE END JA/, 'renders article_end free space');
+like($configured_detail, qr/AFTER KIOSK JA/, 'renders after_kiosk free space after an enabled Kiosk');
+like($configured_detail, qr/ARTICLE END JA.*class="kiosk".*AFTER KIOSK JA/s, 'free-space slots keep article and Kiosk order');
+
+my $enhanced_sitemap = run_cgi('', '/sitemap.xml');
+like($enhanced_sitemap, qr/http:\/\/localhost\/test\/mark6\/about\//, 'sitemap includes default-language fixed page');
+like($enhanced_sitemap, qr/http:\/\/localhost\/test\/mark6\/en\/about\//, 'sitemap includes English fixed page');
+
 remove_tree($root);
 done_testing;
 
@@ -343,6 +460,7 @@ sub run_cgi {
     local $ENV{REQUEST_URI} = $request_uri || '';
     local $ENV{HTTP_ACCEPT_LANGUAGE} = $accept_language || '';
     local $ENV{HTTP_COOKIE} = $cookie || '';
+    local $ENV{HTTP_USER_AGENT} = 'MARK6 test browser';
     local $ENV{REQUEST_METHOD} = 'GET';
     local $ENV{MARK6_ROOT} = $root;
 

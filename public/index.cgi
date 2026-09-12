@@ -25,7 +25,9 @@ BEGIN {
 
 use Mark6::DataStore;
 use Mark6::Article;
+use Mark6::Kiosk qw(config_for_lang item_type valid_url);
 use Mark6::Root;
+use Mark6::TrafficFilter;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/config.json');
 my $store = Mark6::DataStore->new(root => $ROOT);
@@ -79,9 +81,20 @@ if ($route->{type} eq 'article') {
     }
 }
 elsif ($route->{type} eq 'node') {
-    my @articles = grep { Mark6::Article::node_for($_, $config) eq $route->{node} } load_articles();
-    @articles = filter_by_tag(\@articles, $in{tag}) if defined $in{tag} && $in{tag} ne '';
-    $content = render_article_list(\@articles, $in{tag}, node => $route->{node});
+    my $page = find_page_by_slug($route->{node});
+    if ($page) {
+        $route = { %{$route}, type => 'page', slug => $route->{node} };
+        $page_title = Mark6::Article::title_for($page, $current_lang, $config) . " - $site_title";
+        $page_description = article_meta_description($page);
+        $canonical_url = site_absolute_url(article_url($page, $current_lang));
+        $access_article = $page;
+        $content = render_fixed_page($page);
+    }
+    else {
+        my @articles = grep { Mark6::Article::node_for($_, $config) eq $route->{node} } load_articles();
+        @articles = filter_by_tag(\@articles, $in{tag}) if defined $in{tag} && $in{tag} ne '';
+        $content = render_article_list(\@articles, $in{tag}, node => $route->{node});
+    }
 }
 elsif ($order eq 'focus') {
     my $article = find_article($in{tar} || '');
@@ -246,6 +259,7 @@ sub load_articles {
     for my $file (@files) {
         my $article = $store->read_json('dat', 'articles', $file);
         next unless $article && ($article->{status} || '') eq 'published';
+        next unless Mark6::Article::content_type($article) eq 'article';
         Mark6::Article::normalize($article, $config);
         push @articles, $article;
     }
@@ -261,8 +275,36 @@ sub find_article {
 
     my $article = $store->read_json('dat', 'articles', "$id.json");
     return undef unless $article && ($article->{status} || '') eq 'published';
+    return undef unless Mark6::Article::content_type($article) eq 'article';
     Mark6::Article::normalize($article, $config);
     return $article;
+}
+
+sub load_pages {
+    my $dir = "$ROOT/dat/articles";
+    return () unless -d $dir;
+    opendir my $dh, $dir or die "Cannot open $dir: $!";
+    my @files = grep { /\.json\z/ } readdir $dh;
+    closedir $dh;
+
+    my @pages;
+    for my $file (@files) {
+        my $page = $store->read_json('dat', 'articles', $file);
+        next unless $page && ($page->{status} || '') eq 'published';
+        next unless Mark6::Article::content_type($page) eq 'page';
+        Mark6::Article::normalize($page, $config);
+        push @pages, $page;
+    }
+    return sort article_sort @pages;
+}
+
+sub find_page_by_slug {
+    my ($slug) = @_;
+    return undef unless safe_segment($slug);
+    for my $page (load_pages()) {
+        return $page if Mark6::Article::slug_for($page) eq $slug;
+    }
+    return undef;
 }
 
 sub find_article_by_slug {
@@ -292,6 +334,7 @@ sub render_home {
     my $body = trusted_html($localized->{body} || '');
     my $article_list = $home->{show_articles} ? render_article_list($articles, undef, home => 1) : '';
     my $kiosk = render_home_kiosk($home, $articles);
+    my $free_space = render_free_space('home_bottom');
 
     return <<"HTML";
 <section class="home">
@@ -300,6 +343,7 @@ sub render_home {
 </section>
 $article_list
 $kiosk
+$free_space
 HTML
 }
 
@@ -424,6 +468,8 @@ sub render_article_detail {
     my $image = render_image($article, 'detail-image');
     my $lang_links = render_language_links($article);
     my $kiosk = render_kiosk($article);
+    my $article_end = render_free_space('article_end');
+    my $after_kiosk = $kiosk ne '' ? render_free_space('after_kiosk') : '';
 
     $body = $intro if $body eq '';
 
@@ -435,32 +481,88 @@ sub render_article_detail {
   <h1>$title</h1>
   $image
   <div class="body">$body</div>
+  $article_end
   $kiosk
+  $after_kiosk
   $tags
 </article>
 HTML
 }
 
+sub render_fixed_page {
+    my ($page) = @_;
+    my $title = escape_html(Mark6::Article::title_for($page, $current_lang, $config));
+    my $body = trusted_html(Mark6::Article::body_for($page, $current_lang, $config));
+    my $description = trusted_html(Mark6::Article::description_for($page, $current_lang, $config));
+    my $image = render_image($page, 'detail-image');
+    my $lang_links = render_language_links($page);
+    $body = $description if $body eq '';
+
+    return <<"HTML";
+<article class="article-detail fixed-page">
+  $lang_links
+  <h1>$title</h1>
+  $image
+  <div class="body">$body</div>
+</article>
+HTML
+}
+
+sub render_free_space {
+    my ($slot) = @_;
+    return '' unless $slot =~ /\A(?:home_bottom|after_kiosk|article_end)\z/;
+    my $all = ref($config->{free_space}) eq 'HASH' ? $config->{free_space} : {};
+    my $localized = ref($all->{$slot}) eq 'HASH' ? $all->{$slot} : {};
+    my $entry = ref($localized->{$current_lang}) eq 'HASH' ? $localized->{$current_lang} : {};
+    return '' unless truthy($entry->{enabled});
+    return '' unless defined($entry->{html}) && $entry->{html} =~ /\S/;
+    my $class = $slot;
+    $class =~ s/_/-/g;
+    return '<section class="free-space free-space-' . $class . '">' . trusted_html($entry->{html}) . '</section>';
+}
+
 sub render_kiosk {
     my ($article) = @_;
-    my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+    my $kiosk = config_for_lang($article->{kiosk}, $current_lang);
+    return render_kiosk_config($kiosk);
+}
+
+sub render_kiosk_config {
+    my ($kiosk) = @_;
     return '' unless truthy($kiosk->{enabled});
     return '' unless ref($kiosk->{items}) eq 'ARRAY';
 
     my @items;
     for my $item (@{$kiosk->{items}}) {
         next unless ref($item) eq 'HASH';
-        my $label = first_text($item->{label}, $item->{keyword});
-        my $keyword = first_text($item->{keyword}, $item->{label});
-        next if $label eq '' || $keyword eq '';
-        my $href = escape_attr(kiosk_search_url($keyword));
-        my $keyword_note = $label eq $keyword
-            ? ''
-            : '<span class="kiosk-keyword">' . escape_html(kiosk_keyword_label()) . ': ' . escape_html($keyword) . '</span>';
-        push @items, '<li><a class="kiosk-card" href="' . $href . '" target="_blank" rel="noopener sponsored">'
+        my $type = item_type($item);
+        my $label = first_text($item->{label}, $item->{keyword}, $item->{url});
+        next if $label eq '';
+
+        my ($href, $detail, $action);
+        if ($type eq 'amazon') {
+            my $keyword = first_text($item->{keyword}, $item->{label});
+            next if $keyword eq '';
+            $href = kiosk_search_url($keyword);
+            $detail = $label eq $keyword
+                ? ''
+                : '<span class="kiosk-keyword">' . escape_html(kiosk_keyword_label()) . ': ' . escape_html($keyword) . '</span>';
+            $action = kiosk_action_label('amazon');
+        }
+        elsif ($type eq 'url') {
+            next unless valid_url($item->{url});
+            $href = $item->{url};
+            $detail = '';
+            $action = kiosk_action_label('url');
+        }
+        else {
+            next;
+        }
+
+        push @items, '<li><a class="kiosk-card" href="' . escape_attr($href) . '" target="_blank" rel="noopener noreferrer sponsored">'
             . '<span class="kiosk-label">' . escape_html($label) . '</span>'
-            . $keyword_note
-            . '<span class="kiosk-action">' . escape_html(kiosk_action_label()) . '</span>'
+            . $detail
+            . '<span class="kiosk-action">' . escape_html($action) . '</span>'
             . '</a></li>';
     }
     return '' unless @items;
@@ -471,16 +573,16 @@ sub render_kiosk {
 
 sub render_home_kiosk {
     my ($home, $articles) = @_;
-    my $kiosk = ref($home->{kiosk}) eq 'HASH' ? $home->{kiosk} : {};
+    my $kiosk = config_for_lang($home->{kiosk}, $current_lang);
     return '' unless truthy($kiosk->{enabled});
 
     my $mode = ($kiosk->{mode} || 'manual') eq 'auto' ? 'auto' : 'manual';
     if ($mode eq 'auto') {
         my @items = auto_home_kiosk_items($articles);
-        return render_kiosk({ kiosk => { enabled => 1, items => \@items } });
+        return render_kiosk_config({ enabled => 1, items => \@items });
     }
 
-    return render_kiosk({ kiosk => $kiosk });
+    return render_kiosk_config($kiosk);
 }
 
 sub auto_home_kiosk_items {
@@ -489,20 +591,20 @@ sub auto_home_kiosk_items {
     my %seen;
 
     for my $article (@{$articles || []}) {
-        my $kiosk = ref($article->{kiosk}) eq 'HASH' ? $article->{kiosk} : {};
+        my $kiosk = config_for_lang($article->{kiosk}, $current_lang);
         next unless truthy($kiosk->{enabled});
         next unless ref($kiosk->{items}) eq 'ARRAY';
         for my $item (@{$kiosk->{items}}) {
             next unless ref($item) eq 'HASH';
-            my $label = first_text($item->{label}, $item->{keyword});
-            my $keyword = first_text($item->{keyword}, $item->{label});
-            next if $label eq '' || $keyword eq '';
-            my $key = lc "$label\0$keyword";
+            my $type = item_type($item);
+            my $label = first_text($item->{label}, $item->{keyword}, $item->{url});
+            my $target = $type eq 'url' ? ($item->{url} || '') : first_text($item->{keyword}, $item->{label});
+            next if $label eq '' || $target eq '';
+            next if $type eq 'url' && !valid_url($target);
+            next if $type eq '';
+            my $key = lc "$type\0$label\0$target";
             next if $seen{$key}++;
-            push @items, {
-                label   => $label,
-                keyword => $keyword,
-            };
+            push @items, { %{$item}, type => $type, label => $label };
             return @items if @items >= 5;
         }
     }
@@ -519,6 +621,8 @@ sub kiosk_keyword_label {
 }
 
 sub kiosk_action_label {
+    my ($type) = @_;
+    return $current_lang eq 'ja' ? 'リンクを開く' : 'Open link' if ($type || '') eq 'url';
     return $current_lang eq 'ja' ? 'Amazonで探す' : 'Search Amazon';
 }
 
@@ -711,6 +815,15 @@ sub render_sitemap {
             };
         }
     }
+    for my $page (load_pages()) {
+        my $lastmod = format_date($page->{updated_at} || $page->{created_at} || '');
+        for my $lang (@supported_langs) {
+            push @urls, {
+                loc => site_absolute_url(article_url($page, $lang)),
+                lastmod => $lastmod,
+            };
+        }
+    }
 
     my $items = join '', map {
         my $lastmod = $_->{lastmod} ne '' ? '<lastmod>' . xml_escape($_->{lastmod}) . '</lastmod>' : '';
@@ -742,6 +855,11 @@ sub site_absolute_url {
 sub log_access {
     my ($route, $article) = @_;
     return if $ENV{MARK6_DISABLE_ACCESS_LOG};
+    my ($should_count) = Mark6::TrafficFilter->should_count_page_view(
+        method     => $ENV{REQUEST_METHOD} || 'GET',
+        user_agent => $ENV{HTTP_USER_AGENT} || '',
+    );
+    return unless $should_count;
 
     my @t = gmtime(time);
     my $iso = sprintf('%04d-%02d-%02dT%02d:%02d:%02dZ',
@@ -754,6 +872,7 @@ sub log_access {
         route          => $route->{type} || 'index',
         article_id    => $article ? ($article->{id} || '') : '',
         article_title => $article ? Mark6::Article::title_for($article, $current_lang, $config) : '',
+        traffic       => 'human',
     };
     eval { $store->append_jsonl($event, 'dat', 'logs', 'access.jsonl'); 1 };
 }
@@ -780,8 +899,9 @@ sub render_page {
     my ($home_label, $articles_label) = public_nav_labels();
     $home_label = escape_html($home_label);
     $articles_label = escape_html($articles_label);
-    my $section_links = render_section_nav();
-    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=5');
+    my $header_links = render_header_navigation();
+    my $footer_links = render_configured_navigation('footer');
+    my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=6');
     my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
     my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
     my $lang_cookie = lang_cookie_header();
@@ -791,7 +911,7 @@ sub render_page {
         ? qq|  <meta name="description" content="$safe_page_description">\n|
         : '';
     my $canonical_meta = $canonical_url ne '' ? qq|  <link rel="canonical" href="$safe_canonical_url">\n| : '';
-    my $og_type = $article ? 'article' : 'website';
+    my $og_type = $article && Mark6::Article::content_type($article) eq 'article' ? 'article' : 'website';
     my $og_meta = qq|  <meta property="og:type" content="$og_type">\n| .
         qq|  <meta property="og:title" content="@{[escape_attr($page_title)]}">\n| .
         ($page_description ne '' ? qq|  <meta property="og:description" content="$safe_page_description">\n| : '') .
@@ -821,9 +941,7 @@ $lang_cookie
   <header class="site-header">
     <a class="brand" href="$home_href">$safe_site_title</a>
     <nav class="site-nav">
-      <a href="$home_href">$home_label</a>
-      <a href="$articles_href">$articles_label</a>
-      $section_links
+      $header_links
     </nav>
     $language_links
   </header>
@@ -832,11 +950,76 @@ $lang_cookie
   </main>
   <footer class="site-footer">
     <img src="$footer_logo" alt="MARK6">
+    <nav class="footer-nav">$footer_links</nav>
     <span>Powered by MARK6</span>
   </footer>
 </body>
 </html>
 HTML
+}
+
+sub render_header_navigation {
+    my $area_config = ref($config->{navigation}) eq 'HASH' && ref($config->{navigation}{header}) eq 'HASH'
+        ? $config->{navigation}{header} : {};
+    my $system = ref($area_config->{system}) eq 'HASH' ? $area_config->{system} : {};
+    my @links;
+    my $show_home = !exists($system->{home}) || truthy($system->{home});
+    my $show_articles = !exists($system->{articles}) || truthy($system->{articles});
+    my $show_sections = !exists($system->{sections}) || truthy($system->{sections});
+    if ($show_home) {
+        my $home_href = escape_attr(lang_url($current_lang));
+        my ($home_label) = public_nav_labels();
+        push @links, qq|<a href="$home_href">@{[escape_html($home_label)]}</a>|;
+    }
+    if ($show_articles) {
+        my $articles_href = escape_attr(article_list_url());
+        my (undef, $articles_label) = public_nav_labels();
+        push @links, qq|<a href="$articles_href">@{[escape_html($articles_label)]}</a>|;
+    }
+    push @links, render_section_nav() if $show_sections;
+    my $manual = render_configured_navigation('header');
+    push @links, $manual if $manual ne '';
+    return join "\n      ", grep { defined $_ && $_ ne '' } @links;
+}
+
+sub navigation_area_exists {
+    my ($area) = @_;
+    return ref($config->{navigation}) eq 'HASH' && exists $config->{navigation}{$area};
+}
+
+sub render_configured_navigation {
+    my ($area) = @_;
+    return '' unless navigation_area_exists($area);
+    my $area_config = ref($config->{navigation}{$area}) eq 'HASH' ? $config->{navigation}{$area} : {};
+    my $items = ref($area_config->{$current_lang}) eq 'ARRAY' ? $area_config->{$current_lang} : [];
+    my @links;
+    for my $item (@{$items}) {
+        next unless ref($item) eq 'HASH';
+        next if exists($item->{enabled}) && !truthy($item->{enabled});
+        my $label = first_text($item->{label});
+        my $href = navigation_url($item->{url});
+        next if $label eq '' || $href eq '';
+        my $attrs = $href =~ m{\Ahttps?://}i ? ' target="_blank" rel="noopener noreferrer"' : '';
+        push @links, '<a href="' . escape_attr($href) . '"' . $attrs . '>' . escape_html($label) . '</a>';
+    }
+    return join "\n      ", @links;
+}
+
+sub navigation_url {
+    my ($url) = @_;
+    return '' unless defined $url && $url ne '';
+    return $url if $url =~ m{\Ahttps?://[^\s<>"']+\z}i;
+    return '' if $url =~ /\.\./;
+    return '' unless $url =~ m{\A/[0-9A-Za-z_./?&=%#~-]*\z};
+
+    my $path = $url;
+    $path =~ s{\A/+}{};
+    return lang_url($current_lang) if $path eq '';
+    my ($first) = split m{/}, $path;
+    my %supported = map { $_ => 1 } @supported_langs;
+    my $default = $config->{site}{default_lang} || $config->{site}{language} || 'ja';
+    $path = "$current_lang/$path" unless $supported{$first || ''} || $current_lang eq $default;
+    return site_url($path);
 }
 
 sub public_nav_labels {
