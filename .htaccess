@@ -11,6 +11,11 @@ Options -Indexes
   # Block private data before existing-file bypass.
   RewriteRule ^(?:dat|logs|lib|tools|t|docs|extensions|\.git)(?:/|$) - [F,L,NC]
 
+  # CEE API: forward Bearer credentials through CGI rewrites.
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  RewriteRule ^cee/(write|recent|article|update)$ public/cee.cgi?op=$1 [L,QSA]
+
   # /assets/... を public/assets/... として配信
   RewriteRule ^assets/(.+)$ public/assets/$1 [L]
 
