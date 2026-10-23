@@ -5,6 +5,23 @@ use warnings;
 
 my @DEFAULT_LANGS = qw(ja en);
 
+# Review protection belongs to core and remains active without extensions.
+sub requires_review {
+    my ($article) = @_;
+    return 0 unless ref($article) eq 'HASH';
+    return $article->{review_required} || exists($article->{review}) || ref($article->{memory}) eq 'HASH';
+}
+sub is_public {
+    my ($article) = @_;
+    return 0 unless ref($article) eq 'HASH' && ($article->{status} || '') eq 'published';
+    return 0 if ($article->{visibility} || '') eq 'private';
+    if (requires_review($article)) {
+        my $review = ref($article->{review}) eq 'HASH' ? $article->{review} : {};
+        return 0 unless ($review->{state} || '') eq 'approved' && ($review->{approved_by} || '') ne '';
+    }
+    return 1;
+}
+
 sub supported_langs {
     my ($config) = @_;
     my $langs = $config->{site}{langs};

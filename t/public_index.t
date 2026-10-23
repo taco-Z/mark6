@@ -450,6 +450,17 @@ my $enhanced_sitemap = run_cgi('', '/sitemap.xml');
 like($enhanced_sitemap, qr/http:\/\/localhost\/test\/mark6\/about\//, 'sitemap includes default-language fixed page');
 like($enhanced_sitemap, qr/http:\/\/localhost\/test\/mark6\/en\/about\//, 'sitemap includes English fixed page');
 
+# Even an accidentally published memory remains invisible until review.
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'private-memory.json'), {
+    id => 'private-memory', slug => 'private-memory', node => 'sati-memory',
+    title => 'PRIVATE-SENTINEL', intro => 'PRIVATE-SENTINEL', body => 'PRIVATE-SENTINEL',
+    status => 'published', memory => { source => 'sati' }, review => { state => 'pending' },
+});
+for my $path ('/ja/', '/ja/sati-memory/', '/ja/sati-memory/private-memory/', '/sitemap.xml', '/rss.xml', '/api/articles') {
+    unlike(run_cgi('', $path), qr/PRIVATE-SENTINEL|private-memory/, "unapproved memory hidden: $path");
+}
+unlike(run_cgi('order=focus&tar=private-memory', ''), qr/PRIVATE-SENTINEL/, 'legacy direct ID route hides memory');
+unlike(run_cgi('order=article&tag=private-tag', ''), qr/PRIVATE-SENTINEL<\//, 'filtered list hides memory');
 remove_tree($root);
 done_testing;
 

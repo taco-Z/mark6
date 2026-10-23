@@ -678,6 +678,24 @@ my $after_delete = run_cgi(
 );
 like($after_delete, qr/Article not found/, 'deleted article is hidden publicly');
 
+write_json(File::Spec->catfile($root, 'dat', 'articles', 'memory-test.json'), {
+    id => 'memory-test', title => 'Private memory', node => 'sati-memory', status => 'draft',
+    memory => {source => 'sati'}, visibility => 'private', review => {state => 'pending'},
+});
+my $approved = run_cgi(script => 'admin/articles.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(command => 'save', csrf_token => $csrf, id => 'memory-test', status => 'published', title_ja => 'Reviewed public memory', body_ja => 'Reviewed text'));
+like($approved, qr/Location: articles\.cgi/, 'master manually publishes memory');
+my $reviewed = read_json(File::Spec->catfile($root, 'dat', 'articles', 'memory-test.json'));
+is($reviewed->{review}{state}, 'approved', 'manual save records approval');
+ok($reviewed->{review}{approved_by}, 'approval records administrator');
+is($reviewed->{visibility}, 'public', 'manual save changes visibility');
+my $users = read_json(File::Spec->catfile($root, 'dat', 'users.json'));
+$users->{users}[0]{rank} = 'writer';
+write_json(File::Spec->catfile($root, 'dat', 'users.json'), $users);
+my $denied = run_cgi(script => 'admin/articles.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(command => 'save', csrf_token => $csrf, id => 'memory-test', status => 'published', title_ja => 'Writer change'));
+like($denied, qr/Only a master administrator/, 'writer cannot approve memory');
+is(read_json(File::Spec->catfile($root, 'dat', 'articles', 'memory-test.json'))->{title}, 'Reviewed public memory', 'denied save preserves reviewed data');
 remove_tree($root);
 done_testing;
 

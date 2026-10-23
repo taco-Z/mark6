@@ -27,6 +27,8 @@ use Mark6::Admin;
 use Mark6::CGI qw();
 use Mark6::DataStore;
 use Mark6::Lang;
+use Mark6::Theme;
+use Mark6::Extensions;
 use Mark6::Root;
 
 my $ROOT = $ENV{MARK6_ROOT} || Mark6::Root::default_root(findbin => $FindBin::Bin, script => $0, marker => 'dat/users.json');
@@ -54,6 +56,12 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
+    if (grep { /\Aextension_/ } keys %params) {
+        unless (($user->{rank} || '') eq 'master') {
+            render_page('Permission denied', '<p class="error">Only a master administrator can configure extensions.</p>');
+            exit;
+        }
+    }
     save_settings();
     Mark6::CGI::redirect('settings.cgi?saved=1');
     exit;
@@ -67,6 +75,8 @@ sub render_settings {
     my $saved = ($params{saved} || '') eq '1' ? '<p class="notice">' . h($lang->t('admin.settings.saved', 'Settings saved.')) . '</p>' : '';
 
     my $site_title = Mark6::CGI::escape_html($config->{site}{title} || '');
+    my $site_description = h($config->{site}{description} || '');
+    my $og_image = h($config->{site}{og_image} || '');
     my $base_url = Mark6::CGI::escape_html($config->{site}{base_url} || '');
     my $language = $config->{site}{language} || 'ja';
     my $ja_selected = $language eq 'ja' ? 'selected' : '';
@@ -80,6 +90,12 @@ sub render_settings {
     my $ai_api_key_file = Mark6::CGI::escape_html($config->{ai}{api_key_file} || '');
     my $amazon_affiliate_tag = Mark6::CGI::escape_html($config->{kiosk}{affiliate_tag} || '');
     my $node_fields = node_settings_fields($config);
+    my $extension_fields = '';
+    my $extension = Mark6::Extensions::load('memory');
+    if ($extension && ($user->{rank} || '') eq 'master') {
+        $extension_fields = $extension->{settings_html}->($config);
+    }
+    my $theme_fields = Mark6::Theme::editor($config->{theme});
     my $free_space_fields = free_space_fields($config);
 
     my $tags_checked = checked($config->{features}{tags});
@@ -129,6 +145,8 @@ sub render_settings {
     <fieldset>
       <legend>$site_label</legend>
       <label>$site_title_label<br><input name="site_title" type="text" value="$site_title" required></label>
+      <label>Site description<br><textarea name="site_description" maxlength="600">$site_description</textarea></label>
+      <label>Default OGP image URL<br><input name="og_image" type="url" value="$og_image" placeholder="https://example.com/image.jpg"></label>
       <label>$base_url_label<br><input name="base_url" type="url" value="$base_url"></label>
       <label>$language_label<br>
         <select name="language">
@@ -137,6 +155,8 @@ sub render_settings {
         </select>
       </label>
     </fieldset>
+    $theme_fields
+    $extension_fields
     <fieldset>
       <legend>$display_label</legend>
       <label>$articles_per_page_label<br><input name="articles_per_page" type="number" min="1" max="100" value="$articles_per_page"></label>
@@ -185,7 +205,12 @@ HTML
 
 sub save_settings {
     my $config = load_config();
+    my $extension = Mark6::Extensions::load('memory');
+    $extension->{save_settings}->($config, \%params) if $extension;
 
+    if (exists $params{theme_preset}) {
+        $config->{theme} = Mark6::Theme::normalize({ map { $_ => $params{"theme_$_"} } qw(preset background panel text accent font width) });
+    }
     $config->{version} ||= 1;
     $config->{site} ||= {};
     $config->{features} ||= {};
@@ -195,6 +220,11 @@ sub save_settings {
     $config->{free_space} ||= {};
     $config->{nodes} = collect_nodes();
 
+    if (exists $params{site_description}) { $config->{site}{description} = substr(clean_text($params{site_description}), 0, 600); }
+    if (exists $params{og_image}) {
+        my $image = clean_text($params{og_image});
+        $config->{site}{og_image} = $image =~ m{\Ahttps?://[^\s<>]+\z} ? $image : '';
+    }
     $config->{site}{title} = $params{site_title} || 'MARK6 Site';
     $config->{site}{base_url} = $params{base_url} || '';
     $config->{site}{language} = ($params{language} || 'ja') eq 'en' ? 'en' : 'ja';

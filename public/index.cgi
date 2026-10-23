@@ -25,6 +25,7 @@ BEGIN {
 
 use Mark6::DataStore;
 use Mark6::Article;
+use Mark6::Theme;
 use Mark6::Kiosk qw(config_for_lang item_type valid_url);
 use Mark6::Root;
 use Mark6::TrafficFilter;
@@ -258,7 +259,7 @@ sub load_articles {
     my @articles;
     for my $file (@files) {
         my $article = $store->read_json('dat', 'articles', $file);
-        next unless $article && ($article->{status} || '') eq 'published';
+        next unless Mark6::Article::is_public($article);
         next unless Mark6::Article::content_type($article) eq 'article';
         Mark6::Article::normalize($article, $config);
         push @articles, $article;
@@ -274,7 +275,7 @@ sub find_article {
     return undef unless $id =~ /\A[0-9A-Za-z_-]+\z/;
 
     my $article = $store->read_json('dat', 'articles', "$id.json");
-    return undef unless $article && ($article->{status} || '') eq 'published';
+    return undef unless Mark6::Article::is_public($article);
     return undef unless Mark6::Article::content_type($article) eq 'article';
     Mark6::Article::normalize($article, $config);
     return $article;
@@ -290,7 +291,7 @@ sub load_pages {
     my @pages;
     for my $file (@files) {
         my $page = $store->read_json('dat', 'articles', $file);
-        next unless $page && ($page->{status} || '') eq 'published';
+        next unless Mark6::Article::is_public($page);
         next unless Mark6::Article::content_type($page) eq 'page';
         Mark6::Article::normalize($page, $config);
         push @pages, $page;
@@ -901,10 +902,13 @@ sub render_page {
     $articles_label = escape_html($articles_label);
     my $header_links = render_header_navigation();
     my $footer_links = render_configured_navigation('footer');
+    my $theme_css = Mark6::Theme::css($config->{theme});
+    my $theme_style = $theme_css ne '' ? "<style>$theme_css</style>" : '';
     my $css_href = escape_attr(asset_url('css/mark6.css') . '?v=6');
     my $favicon_href = escape_attr(asset_url('img/mark6-icon.svg') . '?v=2');
     my $footer_logo = escape_attr(asset_url('img/mark6-logo-light.svg') . '?v=2');
     my $lang_cookie = lang_cookie_header();
+    $page_description ||= $config->{site}{description} || '';
     my $safe_page_description = escape_attr($page_description || '');
     my $safe_canonical_url = escape_attr($canonical_url || '');
     my $description_meta = $page_description ne ''
@@ -918,6 +922,11 @@ sub render_page {
         ($canonical_url ne '' ? qq|  <meta property="og:url" content="$safe_canonical_url">\n| : '');
     if ($article && safe_image_path($article->{image} || '')) {
         my $image_url = escape_attr(site_absolute_url(image_src($article->{image})));
+        $og_meta .= qq|  <meta property="og:image" content="$image_url">\n|;
+    }
+
+    elsif (($config->{site}{og_image} || '') =~ m{\Ahttps?://[^\s<>]+\z}) {
+        my $image_url = escape_attr($config->{site}{og_image});
         $og_meta .= qq|  <meta property="og:image" content="$image_url">\n|;
     }
 
@@ -936,6 +945,7 @@ $lang_cookie
   <title>$safe_page_title</title>
   <link rel="icon" href="$favicon_href" type="image/svg+xml">
   <link rel="stylesheet" href="$css_href">
+  $theme_style
 </head>
 <body>
   <header class="site-header">

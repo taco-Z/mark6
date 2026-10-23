@@ -8,6 +8,7 @@ use JSON::PP ();
 use Encode qw(decode encode);
 use IPC::Open3 qw(open3);
 use Symbol qw(gensym);
+use Mark6::Extensions;
 
 my $perl = $^X;
 my $root = File::Spec->catdir('t', 'tmp_admin_settings');
@@ -79,6 +80,11 @@ my $save = run_cgi(
     body => form_data(
         csrf_token => $csrf,
         site_title => 'After Site',
+        site_description => 'Public site summary',
+        og_image => 'https://example.test/og.jpg',
+        theme_preset => 'waremono',
+        theme_accent => '#654321',
+        theme_width => '1200',
         base_url => 'https://example.test',
         language => 'en',
         articles_per_page => 12,
@@ -107,6 +113,12 @@ my $save = run_cgi(
 like($save, qr/Location: settings\.cgi\?saved=1/, 'settings save redirects');
 
 my $config = read_json(File::Spec->catfile($root, 'dat', 'config.json'));
+is($config->{site}{description}, 'Public site summary', 'site description saved');
+is($config->{site}{og_image}, 'https://example.test/og.jpg', 'default OGP image saved');
+is($config->{theme}{preset}, 'waremono', 'theme preset saved');
+is($config->{theme}{accent}, '#654321', 'custom theme accent saved');
+is($config->{theme}{width}, 1200, 'theme width saved');
+is($config->{theme}{font}, 'serif', 'preset typography saved');
 is($config->{site}{title}, 'After Site', 'site title saved');
 is($config->{site}{base_url}, 'https://example.test', 'base url saved');
 is($config->{site}{language}, 'en', 'language saved');
@@ -136,10 +148,42 @@ my $public = run_cgi(
     method => 'GET',
     path_info => '/en/',
 );
+like($public, qr/property="og:description" content="Public site summary"/, 'site OGP description rendered');
+like($public, qr/property="og:image" content="https:\/\/example\.test\/og\.jpg"/, 'site OGP fallback rendered');
+like($public, qr/--accent:#654321/, 'saved theme reaches public page');
+like($public, qr/width:min\(1200px/, 'saved width reaches public page');
 like($public, qr/<title>After Site<\/title>/, 'public page uses updated site title');
 like($public, qr/href="https:\/\/example\.test\/en\/oita360\/">Oita 360<\/a>/, 'public page uses English section label in nav');
 like($public, qr/href="https:\/\/example\.test\/en\/news\/">News<\/a>/, 'public page renders second section nav link');
 
+SKIP: {
+    skip 'Optional Memory extension is not installed', 11 unless Mark6::Extensions::installed('memory');
+like($settings, qr/name="extension_memory_enabled"/, 'installed extension provides an activation switch');
+unlike($settings, qr/name="extension_memory_enabled"[^>]*checked/, 'extension defaults to disabled');
+my $enable = run_cgi(script => 'admin/settings.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(csrf_token => $csrf, site_title => 'After Site', extension_memory_present => 1, extension_memory_enabled => 1, extension_memory_profile => 'sati'));
+like($enable, qr/Location: settings\.cgi/, 'master can enable extension');
+my $enabled_config = read_json(File::Spec->catfile($root, 'dat', 'config.json'));
+ok($enabled_config->{extensions}{memory}{enabled}, 'activation persisted');
+is($enabled_config->{extensions}{memory}{profile}, 'sati', 'SATi profile persisted');
+my $bad_csrf = run_cgi(script => 'admin/settings.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(csrf_token => 'bad', extension_memory_present => 1));
+ok(read_json(File::Spec->catfile($root, 'dat', 'config.json'))->{extensions}{memory}{enabled}, 'invalid CSRF cannot disable extension');
+my $users_path = File::Spec->catfile($root, 'dat', 'users.json');
+my $users = read_json($users_path);
+$users->{users}[0]{rank} = 'writer'; write_json($users_path, $users);
+my $writer_form = run_cgi(script => 'admin/settings.cgi', cookie => "mark6_session=$session_id");
+unlike($writer_form, qr/name="extension_memory_enabled"/, 'writer has no activation switch');
+my $denied = run_cgi(script => 'admin/settings.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(csrf_token => $csrf, extension_memory_present => 1));
+like($denied, qr/Only a master administrator/, 'writer cannot configure extension');
+ok(read_json(File::Spec->catfile($root, 'dat', 'config.json'))->{extensions}{memory}{enabled}, 'denied settings preserve activation');
+$users->{users}[0]{rank} = 'master'; write_json($users_path, $users);
+my $disable = run_cgi(script => 'admin/settings.cgi', method => 'POST', cookie => "mark6_session=$session_id",
+    body => form_data(csrf_token => $csrf, site_title => 'After Site', extension_memory_present => 1, extension_memory_profile => 'sati'));
+like($disable, qr/Location: settings\.cgi/, 'master can disable extension');
+ok(!read_json(File::Spec->catfile($root, 'dat', 'config.json'))->{extensions}{memory}{enabled}, 'unchecked switch disables API');
+}
 remove_tree($root);
 done_testing;
 

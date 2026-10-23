@@ -1,19 +1,27 @@
 DirectoryIndex public/index.cgi
 
+Options -Indexes
+<FilesMatch "\.(?:json|jsonl|lock|tmp)(?:\.|$)">
+  Require all denied
+</FilesMatch>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # /assets/... ‚ğ public/assets/... ‚Æ‚µ‚Ä”zM
+  # Block private data before existing-file bypass.
+  RewriteRule ^(?:dat|logs|lib|tools|t|docs|extensions|\.git)(?:/|$) - [F,L,NC]
+
+  # /assets/... ã‚’ public/assets/... ã¨ã—ã¦é…ä¿¡
   RewriteRule ^assets/(.+)$ public/assets/$1 [L]
 
-  # public”z‰º‚ÌƒAƒZƒbƒg‚ÍCGI‚Ö“n‚³‚È‚¢
+  # publicé…ä¸‹ã®ã‚¢ã‚»ãƒƒãƒˆã¯CGIã¸æ¸¡ã•ãªã„
   RewriteRule ^public/assets/ - [L]
 
-  # Àİ‚·‚éƒtƒ@ƒCƒ‹EƒfƒBƒŒƒNƒgƒŠ‚Í‚»‚Ì‚Ü‚Ü”zM
+  # å®Ÿåœ¨ã™ã‚‹ãƒ•ã‚¡ã‚¤ãƒ«ãƒ»ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã¯ãã®ã¾ã¾é…ä¿¡
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # ‚»‚êˆÈŠO‚ÍŒöŠJCGI‚Ö
+  # ãã‚Œä»¥å¤–ã¯å…¬é–‹CGIã¸
   RewriteRule ^(.*)$ public/index.cgi?path=$1 [L,QSA]
 </IfModule>

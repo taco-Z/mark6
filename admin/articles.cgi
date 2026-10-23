@@ -63,6 +63,11 @@ if (($ENV{REQUEST_METHOD} || 'GET') eq 'POST') {
         exit;
     }
 
+    if ($command =~ /\Aai_/ && (Mark6::Article::requires_review(load_article($params{id} || '') || {}))) {
+        render_page('Review required', '<p class="error">AI processing of review-protected content is disabled. Review and save manually.</p>');
+        exit;
+    }
+
     if ($command eq 'save') {
         my $error = run_admin_action(sub { save_article() });
         if ($error) {
@@ -443,6 +448,14 @@ sub save_article {
         kiosk      => collect_kiosk($existing),
     };
 
+    if (Mark6::Article::requires_review($existing) || Mark6::Article::requires_review($article)) {
+        $article->{review_required} = JSON::PP::true;
+        die "Only a master administrator can publish review-protected content" if $article->{status} eq 'published' && ($user->{rank} || '') ne 'master';
+        $article->{visibility} = $article->{status} eq 'published' ? 'public' : 'private';
+        $article->{review} = $article->{status} eq 'published'
+            ? { state => 'approved', approved_by => $user->{id}, approved_at => $now }
+            : { state => 'pending' };
+    }
     my $path = $store->write_json($article, 'dat', 'articles', "$id.json");
     die "Article JSON was not created at $path" unless -e $path;
     return "$id";
@@ -454,6 +467,7 @@ sub perform_ai_action {
 
     my $article = load_article($id) or die "Article not found";
     Mark6::Article::normalize($article, $config);
+    die "AI processing is disabled for review-protected content" if Mark6::Article::requires_review($article);
     my $assistant = Mark6::AI->new(config => $config);
     $article->{ai} ||= {};
     my $default_lang = Mark6::Article::default_lang($article, $config);
